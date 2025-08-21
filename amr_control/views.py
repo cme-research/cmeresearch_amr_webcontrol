@@ -342,7 +342,8 @@ def shutdown_pi(request):
     """
     # Detect availability of shutdown binary
     shutdown_bin = shutil.which('shutdown') or '/sbin/shutdown'
-    cmd = ['sudo', shutdown_bin, '-h', 'now']
+    sudo_bin = shutil.which('sudo')
+    cmd = [shutdown_bin, '-h', 'now'] if sudo_bin is None else [sudo_bin, shutdown_bin, '-h', 'now']
     try:
         # Fire-and-forget; system may go down immediately
         subprocess.Popen(cmd)
@@ -377,7 +378,8 @@ def restart_pi(request):
     for the container to affect the host.
     """
     shutdown_bin = shutil.which('shutdown') or '/sbin/shutdown'
-    cmd = ['sudo', shutdown_bin, '-r', 'now']
+    sudo_bin = shutil.which('sudo')
+    cmd = [shutdown_bin, '-r', 'now'] if sudo_bin is None else [sudo_bin, shutdown_bin, '-r', 'now']
     try:
         subprocess.Popen(cmd)
         message = 'Restart command issued. The system will reboot shortly.'
