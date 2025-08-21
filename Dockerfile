@@ -15,6 +15,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY . .
 
+RUN mkdir /robot/bin/
+COPY ./install/bin/restartSystem /robot/bin
+COPY ./install/bin/shutdownSystem /robot/bin
+
 # Expose Django default port
 EXPOSE 8000
 

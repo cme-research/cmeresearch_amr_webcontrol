@@ -1,6 +1,6 @@
 {
   "mqtt": {
-    "broker_url": "192.168.1.2",
+    "broker_url": "localhost",
     "broker_port": 1883,
     "subscribe_topic": "fake_odom"
   },
