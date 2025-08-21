@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMR Control Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding-top: 60px;
+        }
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card-header {
+            font-weight: bold;
+            background-color: #6c757d;
+            color: white;
+        }
+        .value-display {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #343a40;
+        }
+        .unit {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .progress {
+            height: 10px;
+            margin-top: 10px;
+        }
+        .action-btn {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .timestamp {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-connected {
+            background-color: #28a745;
+        }
+        .status-disconnected {
+            background-color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-robot me-2"></i>AMR Control Dashboard
+            </a>
+            <div class="ms-auto d-flex align-items-center">
+                <span class="text-light me-2">MQTT:</span>
+                <span class="status-indicator status-connected" id="connection-status"></span>
+                <span class="text-light" id="connection-text">Connected</span>
+                <div class="btn-group ms-3">
+                    <button type="button" class="btn btn-danger btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="Power options">
+                        <i class="fas fa-power-off me-1"></i> Power
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item text-danger" href="#" id="powerMenuShutdown"><i class="fas fa-stop-circle me-2"></i>Shutdown</a></li>
+                        <li><a class="dropdown-item" href="#" id="powerMenuRestart"><i class="fas fa-rotate-right me-2"></i>Restart</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <!-- Hidden form to ensure CSRF cookie is set -->
+    <form id="csrf-form" style="display:none;">{% csrf_token %}</form>
+
+    <!-- Toast container for notifications -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="5000">
+                    <div class="toast-header {% if message.tags == 'success' %}bg-success text-white{% elif message.tags == 'error' %}bg-danger text-white{% else %}bg-primary text-white{% endif %}">
+                        <i class="fas {% if message.tags == 'success' %}fa-check-circle{% elif message.tags == 'error' %}fa-exclamation-circle{% else %}fa-info-circle{% endif %} me-2"></i>
+                        <strong class="me-auto">{{ message.tags|title }}</strong>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        {{ message }}
+                    </div>
+                </div>
+            {% endfor %}
+        {% endif %}
+    </div>
+
+    <div class="container mt-4">
+        <div class="row">
+            <!-- Time Information -->
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <i class="fas fa-clock me-2"></i>System Status
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="mb-1">Last Update:</p>
+                                <p class="value-display" id="header-time">-</p>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <p class="timestamp" id="local-time"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Velocity Information -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <i class="fas fa-tachometer-alt me-2"></i>Velocity
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <p class="mb-1">Linear X:</p>
+                                <p class="value-display" id="linear-x">-</p>
+                                <p class="unit">m/s</p>
+                                <div class="progress">
+                                    <div id="linear-x-progress" class="progress-bar bg-success" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <p class="mb-1">Linear Y:</p>
+                                <p class="value-display" id="linear-y">-</p>
+                                <p class="unit">m/s</p>
+                                <div class="progress">
+                                    <div id="linear-y-progress" class="progress-bar bg-success" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-12">
+                                <p class="mb-1">Angular Z (Rotation):</p>
+                                <p class="value-display" id="angular-z">-</p>
+                                <p class="unit">rad/s</p>
+                                <div class="progress">
+                                    <div id="angular-z-progress" class="progress-bar bg-info" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Position Information -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <i class="fas fa-map-marker-alt me-2"></i>Position
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <p class="mb-1">Position X:</p>
+                                <p class="value-display" id="position-x">-</p>
+                                <p class="unit">meters</p>
+                            </div>
+                            <div class="col-6">
+                                <p class="mb-1">Position Y:</p>
+                                <p class="value-display" id="position-y">-</p>
+                                <p class="unit">meters</p>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-12">
+                                <p class="mb-1">Orientation Z:</p>
+                                <p class="value-display" id="orientation-z">-</p>
+                                <p class="unit">radians</p>
+                                <div id="orientation-indicator" class="mt-2" style="height: 50px; background-color: #f8f9fa; border-radius: 5px; position: relative;">
+                                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                                        <i id="orientation-arrow" class="fas fa-arrow-up fa-2x" style="transform: rotate(0deg);"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Buttons -->
+            <div class="col-md-12 mt-4">
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        <i class="fas fa-gamepad me-2"></i>Robot Control
+                    </div>
+                    <div class="card-body">
+                        <form method="post" action="{% url 'handle_button' %}">
+                            {% csrf_token %}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <button type="submit" name="button_type" value="button1" class="btn btn-primary action-btn">
+                                        <i class="fas fa-play me-2"></i>Start Mission
+                                    </button>
+                                </div>
+                                <div class="col-md-6">
+                                    <button type="submit" name="button_type" value="button2" class="btn btn-danger action-btn">
+                                        <i class="fas fa-stop me-2"></i>Emergency Stop
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Movement Control Panel -->
+            <div class="col-md-12 mt-4">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <i class="fas fa-arrows-alt me-2"></i>Movement Control
+                    </div>
+                    <div class="card-body">
+                        <form method="post" action="{% url 'handle_button' %}" id="movement-form">
+                            {% csrf_token %}
+                            <div class="row mb-4">
+                                <div class="col-md-4"></div>
+                                <div class="col-md-4 text-center">
+                                    <button type="submit" name="button_type" value="move_forward" class="btn btn-primary btn-lg w-100 mb-2">
+                                        <i class="fas fa-arrow-up"></i> Forward
+                                    </button>
+                                </div>
+                                <div class="col-md-4"></div>
+                            </div>
+
+                            <div class="row mb-4">
+                                <div class="col-md-4 text-center">
+                                    <button type="submit" name="button_type" value="move_left" class="btn btn-primary btn-lg w-100">
+                                        <i class="fas fa-arrow-left"></i> Left
+                                    </button>
+                                </div>
+                                <div class="col-md-4 text-center">
+                                    <button type="submit" name="button_type" value="stop_robot" class="btn btn-danger btn-lg w-100">
+                                        <i class="fas fa-stop-circle"></i> Stop
+                                    </button>
+                                </div>
+                                <div class="col-md-4 text-center">
+                                    <button type="submit" name="button_type" value="move_right" class="btn btn-primary btn-lg w-100">
+                                        <i class="fas fa-arrow-right"></i> Right
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="row mb-4">
+                                <div class="col-md-4"></div>
+                                <div class="col-md-4 text-center">
+                                    <button type="submit" name="button_type" value="move_backward" class="btn btn-primary btn-lg w-100 mb-2">
+                                        <i class="fas fa-arrow-down"></i> Backward
+                                    </button>
+                                </div>
+                                <div class="col-md-4"></div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 text-center">
+                                    <button type="submit" name="button_type" value="rotate_counterclockwise" class="btn btn-info btn-lg w-100">
+                                        <i class="fas fa-undo"></i> Rotate Left
+                                    </button>
+                                </div>
+                                <div class="col-md-6 text-center">
+                                    <button type="submit" name="button_type" value="rotate_clockwise" class="btn btn-info btn-lg w-100">
+                                        <i class="fas fa-redo"></i> Rotate Right
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2D SLAM Map Panel -->
+            <div class="col-md-12 mt-4">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <i class="fas fa-map me-2"></i>2D SLAM Map
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="map-container" style="position: relative; width: 100%; height: 400px; background-color: #f8f9fa; border-radius: 5px; overflow: hidden;">
+                                    <img id="map-image" src="{% url 'map_image' %}" alt="Map" style="width: 100%; height: 100%; object-fit: contain;" />
+                                    <div id="robot-position" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px;">
+                                        <i id="robot-indicator" class="fas fa-robot fa-lg" style="color: #007bff; transform: rotate(0deg);"></i>
+                                    </div>
+                                </div>
+                                <div class="mt-3 text-center">
+                                    <button id="refresh-map" class="btn btn-primary">
+                                        <i class="fas fa-sync-alt me-2"></i>Refresh Map
+                                    </button>
+                                    <span class="ms-3 text-muted">Map shows robot position and obstacles</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pose Management Panel -->
+            <div class="col-md-12 mt-4">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <i class="fas fa-map-marker-alt me-2"></i>Pose Management
+                    </div>
+                    <div class="card-body">
+                        <!-- Save Current Pose Form -->
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <h5>Save Current Position</h5>
+                                <form method="post" action="{% url 'handle_button' %}" class="row g-3">
+                                    {% csrf_token %}
+                                    <div class="col-md-8">
+                                        <input type="text" class="form-control" name="pose_name" placeholder="Pose Name" required>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <button type="submit" name="button_type" value="save_pose" class="btn btn-success w-100">
+                                            <i class="fas fa-save me-2"></i>Save Current Pose
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Saved Poses List -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <h5>Saved Positions</h5>
+                                {% if saved_poses %}
+                                    <div class="table-responsive">
+                                        <table class="table table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>Name</th>
+                                                    <th>Position (X, Y)</th>
+                                                    <th>Orientation</th>
+                                                    <th>Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for pose in saved_poses %}
+                                                <tr>
+                                                    <td>{{ pose.name }}</td>
+                                                    <td>({{ pose.position_x|floatformat:2 }}, {{ pose.position_y|floatformat:2 }})</td>
+                                                    <td>{{ pose.orientation_z|floatformat:2 }}</td>
+                                                    <td>
+                                                        <form method="post" action="{% url 'handle_button' %}">
+                                                            {% csrf_token %}
+                                                            <input type="hidden" name="pose_id" value="{{ pose.id }}">
+                                                            <button type="submit" name="button_type" value="navigate_to_pose" class="btn btn-primary btn-sm">
+                                                                <i class="fas fa-route me-1"></i>Navigate
+                                                            </button>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                {% else %}
+                                    <div class="alert alert-info">
+                                        No saved poses yet. Use the form above to save the current robot position.
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Initialize and show toasts
+        document.addEventListener('DOMContentLoaded', function() {
+            const toastElList = [].slice.call(document.querySelectorAll('.toast'));
+            const toastList = toastElList.map(function(toastEl) {
+                return new bootstrap.Toast(toastEl);
+            });
+
+            // Show all toasts
+            toastList.forEach(toast => toast.show());
+
+            // Initialize the map
+            fetchMapData();
+
+            // Handle movement form submission via AJAX
+            const movementForm = document.getElementById('movement-form');
+            if (movementForm) {
+                movementForm.addEventListener('submit', function(event) {
+                    event.preventDefault(); // Prevent default form submission
+
+                    // Get the clicked button value
+                    const buttonType = document.activeElement.value;
+
+                    // Create form data
+                    const formData = new FormData(movementForm);
+
+                    // Submit form via AJAX
+                    fetch('{% url "handle_button" %}', {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        // Create and show a toast notification with the response message
+                        const toastContainer = document.querySelector('.toast-container');
+
+                        // Create toast element
+                        const toastEl = document.createElement('div');
+                        toastEl.className = 'toast';
+                        toastEl.setAttribute('role', 'alert');
+                        toastEl.setAttribute('aria-live', 'assertive');
+                        toastEl.setAttribute('aria-atomic', 'true');
+                        toastEl.setAttribute('data-bs-autohide', 'true');
+                        toastEl.setAttribute('data-bs-delay', '5000');
+
+                        // Set toast content based on response
+                        const bgClass = data.status === 'success' ? 'bg-success' : 'bg-danger';
+                        const iconClass = data.status === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+
+                        toastEl.innerHTML = `
+                            <div class="toast-header ${bgClass} text-white">
+                                <i class="fas ${iconClass} me-2"></i>
+                                <strong class="me-auto">${data.status === 'success' ? 'Success' : 'Error'}</strong>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                            </div>
+                            <div class="toast-body">
+                                ${data.message}
+                            </div>
+                        `;
+
+                        // Add toast to container
+                        toastContainer.appendChild(toastEl);
+
+                        // Initialize and show the toast
+                        const toast = new bootstrap.Toast(toastEl);
+                        toast.show();
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                    });
+                });
+            }
+        });
+
+        // Get DOM elements
+        const headerTime = document.getElementById('header-time');
+        const linearX = document.getElementById('linear-x');
+        const linearY = document.getElementById('linear-y');
+        const angularZ = document.getElementById('angular-z');
+        const positionX = document.getElementById('position-x');
+        const positionY = document.getElementById('position-y');
+        const orientationZ = document.getElementById('orientation-z');
+        const localTime = document.getElementById('local-time');
+        const connectionStatus = document.getElementById('connection-status');
+        const connectionText = document.getElementById('connection-text');
+        const orientationArrow = document.getElementById('orientation-arrow');
+
+        // Map elements
+        const mapImage = document.getElementById('map-image');
+        const mapCanvas = null; // legacy variable retained; no canvas used now
+        const robotIndicator = document.getElementById('robot-indicator');
+        const robotPosition = document.getElementById('robot-position');
+        const refreshMapButton = document.getElementById('refresh-map');
+
+        // Progress bars
+        const linearXProgress = document.getElementById('linear-x-progress');
+        const linearYProgress = document.getElementById('linear-y-progress');
+        const angularZProgress = document.getElementById('angular-z-progress');
+
+        // Update local time
+        function updateLocalTime() {
+            const now = new Date();
+            localTime.textContent = 'Local Time: ' + now.toLocaleTimeString();
+        }
+
+        // Update local time every second
+        setInterval(updateLocalTime, 1000);
+        updateLocalTime();
+
+        // Connect to SSE endpoint
+        const eventSource = new EventSource("/mqtt_stream/");
+
+        // Listen for new messages
+        eventSource.onmessage = function(event) {
+            // Parse the JSON data
+            const data_json = JSON.parse(event.data);
+            console.log(data_json);
+
+            // Update connection status based on mqtt_connected field
+            if (data_json.mqtt_connected === true) {
+                connectionStatus.className = "status-indicator status-connected";
+                connectionText.textContent = "Connected";
+            } else {
+                connectionStatus.className = "status-indicator status-disconnected";
+                connectionText.textContent = "Disconnected";
+            }
+
+            // If this is just a status update, don't update the data fields
+            if (data_json.status_update) {
+                return;
+            }
+
+            // Format and display the data with appropriate precision
+            headerTime.textContent = data_json.header.time;
+
+            // Velocity data with 2 decimal places
+            const lx = parseFloat(data_json.linear.x).toFixed(2);
+            const ly = parseFloat(data_json.linear.y).toFixed(2);
+            const az = parseFloat(data_json.angular.z).toFixed(2);
+
+            linearX.textContent = lx;
+            linearY.textContent = ly;
+            angularZ.textContent = az;
+
+            // Position data with 2 decimal places
+            const px = parseFloat(data_json.position.x).toFixed(2);
+            const py = parseFloat(data_json.position.y).toFixed(2);
+            const oz = parseFloat(data_json.orientation.z).toFixed(2);
+
+            positionX.textContent = px;
+            positionY.textContent = py;
+            orientationZ.textContent = oz;
+
+            // Update progress bars (assuming max velocity is ±2.0 m/s and max angular velocity is ±1.0 rad/s)
+            const maxLinearVel = 2.0;
+            const maxAngularVel = 1.0;
+
+            // Calculate percentage for progress bars (0-100%)
+            const lxPercent = Math.min(Math.abs(lx / maxLinearVel * 100), 100);
+            const lyPercent = Math.min(Math.abs(ly / maxLinearVel * 100), 100);
+            const azPercent = Math.min(Math.abs(az / maxAngularVel * 100), 100);
+
+            // Update progress bar widths
+            linearXProgress.style.width = lxPercent + '%';
+            linearYProgress.style.width = lyPercent + '%';
+            angularZProgress.style.width = azPercent + '%';
+
+            // Change color based on direction (positive/negative)
+            linearXProgress.className = parseFloat(lx) >= 0 ? "progress-bar bg-success" : "progress-bar bg-danger";
+            linearYProgress.className = parseFloat(ly) >= 0 ? "progress-bar bg-success" : "progress-bar bg-danger";
+            angularZProgress.className = parseFloat(az) >= 0 ? "progress-bar bg-info" : "progress-bar bg-warning";
+
+            // Update orientation arrow
+            const degrees = parseFloat(oz) * (180 / Math.PI);
+            orientationArrow.style.transform = `rotate(${degrees}deg)`;
+
+            // Update robot position on the map if map data is loaded
+            if (mapData) {
+                updateRobotPosition();
+            }
+        };
+
+        // Handle connection errors
+        eventSource.onerror = function() {
+            console.error("Error connecting to MQTT stream.");
+            connectionStatus.className = "status-indicator status-disconnected";
+            connectionText.textContent = "Disconnected";
+            eventSource.close();
+        };
+
+        // Map rendering functions
+        let mapData = null;
+        let currentRobotX = 0;
+        let currentRobotY = 0;
+        let currentRobotOrientation = 0;
+
+        // Fetch/refresh the map image from the server
+        function fetchMapData() {
+            // In the new implementation, we just refresh the map image
+            if (mapImage) {
+                // Cache-busting query param to ensure the latest file is loaded
+                const baseUrl = '{% url "map_image" %}';
+                mapImage.src = baseUrl + '?t=' + Date.now();
+            }
+            // No mapData is used anymore for drawing
+            mapData = null;
+        }
+
+        // Render the map on the canvas
+        function renderMap() {
+            if (!mapData) return;
+
+            const canvas = mapCanvas;
+            const ctx = canvas.getContext('2d');
+
+            // Set canvas dimensions to match its display size
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Calculate scale factors to fit the map in the canvas
+            const scaleX = canvas.width / mapData.width;
+            const scaleY = canvas.height / mapData.height;
+            const scale = Math.min(scaleX, scaleY) * 0.9; // 90% to leave some margin
+
+            // Calculate the center of the canvas
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Draw a grid
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+
+            // Draw horizontal grid lines
+            for (let y = -10; y <= 10; y += 1) {
+                ctx.beginPath();
+                const canvasY = centerY - y * scale;
+                ctx.moveTo(0, canvasY);
+                ctx.lineTo(canvas.width, canvasY);
+                ctx.stroke();
+            }
+
+            // Draw vertical grid lines
+            for (let x = -10; x <= 10; x += 1) {
+                ctx.beginPath();
+                const canvasX = centerX + x * scale;
+                ctx.moveTo(canvasX, 0);
+                ctx.lineTo(canvasX, canvas.height);
+                ctx.stroke();
+            }
+
+            // Draw the origin (0,0)
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw obstacles
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            for (const obstacle of mapData.obstacles) {
+                const canvasX = centerX + obstacle.x * scale;
+                const canvasY = centerY - obstacle.y * scale;
+                const radius = obstacle.radius * scale;
+
+                ctx.beginPath();
+                ctx.arc(canvasX, canvasY, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Update robot position on the map
+            updateRobotPosition();
+        }
+
+        // Update the robot position on the map
+        function updateRobotPosition() {
+            if (!mapData) return;
+
+            // Get the current robot position from the position display elements
+            currentRobotX = parseFloat(positionX.textContent) || 0;
+            currentRobotY = parseFloat(positionY.textContent) || 0;
+            currentRobotOrientation = parseFloat(orientationZ.textContent) || 0;
+
+            // Calculate the position on the canvas
+            const canvas = mapCanvas;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Calculate scale factors to fit the map in the canvas
+            const scaleX = canvas.width / mapData.width;
+            const scaleY = canvas.height / mapData.height;
+            const scale = Math.min(scaleX, scaleY) * 0.9; // 90% to leave some margin
+
+            const canvasX = centerX + currentRobotX * scale;
+            const canvasY = centerY - currentRobotY * scale;
+
+            // Update the robot indicator position
+            robotPosition.style.left = canvasX + 'px';
+            robotPosition.style.top = canvasY + 'px';
+
+            // Update the robot indicator orientation
+            const degrees = currentRobotOrientation * (180 / Math.PI);
+            robotIndicator.style.transform = `rotate(${degrees}deg)`;
+        }
+
+        // Add event listener to the refresh button
+        refreshMapButton.addEventListener('click', fetchMapData);
+
+        // Helper to read CSRF token from cookie
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // Power menu handling (Shutdown and Restart)
+        function showToast(ok, message) {
+            const toastContainer = document.querySelector('.toast-container');
+            const toastEl = document.createElement('div');
+            toastEl.className = 'toast';
+            toastEl.setAttribute('role', 'alert');
+            toastEl.setAttribute('aria-live', 'assertive');
+            toastEl.setAttribute('aria-atomic', 'true');
+            toastEl.setAttribute('data-bs-autohide', 'true');
+            toastEl.setAttribute('data-bs-delay', '5000');
+            const bgClass = ok ? 'bg-success' : 'bg-danger';
+            const iconClass = ok ? 'fa-check-circle' : 'fa-exclamation-circle';
+            const title = ok ? 'Success' : 'Error';
+            toastEl.innerHTML = `
+                <div class="toast-header ${bgClass} text-white">
+                    <i class="fas ${iconClass} me-2"></i>
+                    <strong class="me-auto">${title}</strong>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body">${message}</div>
+            `;
+            toastContainer.appendChild(toastEl);
+            const toast = new bootstrap.Toast(toastEl);
+            toast.show();
+        }
+
+        function postPower(url, confirmMsg, fallbackSuccessMsg, fallbackErrorMsg) {
+            if (!confirm(confirmMsg)) return;
+            return fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(async (response) => {
+                let data = {};
+                try { data = await response.json(); } catch (e) {}
+                const ok = response.ok;
+                const msg = data.message || (ok ? fallbackSuccessMsg : fallbackErrorMsg);
+                showToast(ok, msg);
+            })
+            .catch((error) => {
+                console.error('Power action error:', error);
+                alert(fallbackErrorMsg);
+            });
+        }
+
+        const menuShutdown = document.getElementById('powerMenuShutdown');
+        if (menuShutdown) {
+            menuShutdown.addEventListener('click', (e) => {
+                e.preventDefault();
+                postPower('{% url "shutdown_pi" %}', 'Are you sure you want to shutdown the Raspberry Pi now?', 'Shutdown command sent', 'Failed to send shutdown command');
+            });
+        }
+        const menuRestart = document.getElementById('powerMenuRestart');
+        if (menuRestart) {
+            menuRestart.addEventListener('click', (e) => {
+                e.preventDefault();
+                postPower('{% url "restart_pi" %}', 'Are you sure you want to restart the Raspberry Pi now?', 'Restart command sent', 'Failed to send restart command');
+            });
+        }
+    </script>
+</body>
+</html>

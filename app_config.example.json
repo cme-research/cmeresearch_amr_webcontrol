@@ -1,0 +1,19 @@
+{
+  "mqtt": {
+    "broker_url": "localhost",
+    "broker_port": 1883,
+    "subscribe_topic": "fake_odom"
+  },
+  "topics": {
+    "movement": "amr_control/cmd_vel",
+    "move_base_goal": "amr_control/move_base_goal"
+  },
+  "map": {
+    "width": 20,
+    "height": 20,
+    "resolution": 0.05,
+    "origin_x": -10.0,
+    "origin_y": -10.0,
+    "obstacles": []
+  }
+}

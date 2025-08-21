@@ -1,0 +1,58 @@
+from django.test import TestCase, Client
+from django.urls import reverse
+from unittest import mock
+
+
+class ViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_root_page_renders(self):
+        resp = self.client.get(reverse('button_page'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'AMR Control Dashboard')
+
+    def test_get_map_view_returns_json(self):
+        resp = self.client.get(reverse('get_map'))
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn('width', data)
+        self.assertIn('height', data)
+        self.assertIn('obstacles', data)
+
+    def test_mqtt_stream_view_sse(self):
+        resp = self.client.get(reverse('mqtt_stream'))
+        # StreamingHttpResponse does not evaluate content immediately
+        self.assertEqual(resp.status_code, 200)
+        ct = resp.get('Content-Type', '')
+        self.assertIn('text/event-stream', ct)
+
+    def test_shutdown_requires_post(self):
+        # GET should be method not allowed
+        resp = self.client.get(reverse('shutdown_pi'))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_shutdown_post_ajax_success(self):
+        with mock.patch('amr_control.views.subprocess.Popen') as popen_mock, \
+             mock.patch('amr_control.views.shutil.which', return_value='/sbin/shutdown'):
+            popen_mock.return_value = mock.Mock()
+            resp = self.client.post(reverse('shutdown_pi'), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertEqual(data['status'], 'success')
+            self.assertIn('Shutdown command', data['message'])
+            popen_mock.assert_called()
+
+    def test_handle_button_movement_ajax(self):
+        # Patch mqtt client to simulate connected & successful publish
+        with mock.patch('amr_control.views.send_movement_command', return_value=True) as send_cmd:
+            resp = self.client.post(
+                reverse('handle_button'),
+                data={'button_type': 'move_forward'},
+                HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+            )
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertEqual(data['status'], 'success')
+            self.assertIn('Moving forward', data['message'])
+            send_cmd.assert_called_once()

@@ -1,0 +1,451 @@
+from django.shortcuts import render, redirect
+from django.urls import reverse
+from django.contrib import messages
+
+# Create your views here.
+from django.http import HttpResponse, JsonResponse, FileResponse, Http404
+from django.views.decorators.csrf import csrf_exempt
+import time
+from django.http import StreamingHttpResponse
+from django.views.decorators.http import require_POST, require_GET
+import subprocess
+import shutil
+
+
+def is_ajax(request):
+    """Check if the request is an AJAX request."""
+    return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+from django_project.mqtt_client import (
+    message_queue, get_connection_status, send_movement_command,
+    send_move_base_goal, get_current_pose, get_map_data
+)
+from .models import RobotPose
+import json
+
+def button_view(request):
+    """Render the HTML template with control panels."""
+    # Get all saved poses from the database
+    saved_poses = RobotPose.objects.all().order_by('-created_at')
+    return render(request, 'amr_control/viewport.html', {'saved_poses': saved_poses})
+
+
+@csrf_exempt
+def handle_button(request):
+    """Handle button clicks and call corresponding methods."""
+    if request.method == 'POST':
+        button_type = request.POST.get('button_type')  # Get the button clicked
+
+        # Original buttons
+        if button_type == 'button1':
+            return button1_action(request)
+        elif button_type == 'button2':
+            return button2_action(request)
+
+        # Movement control buttons
+        elif button_type == 'move_forward':
+            return move_forward(request)
+        elif button_type == 'move_backward':
+            return move_backward(request)
+        elif button_type == 'move_left':
+            return move_left(request)
+        elif button_type == 'move_right':
+            return move_right(request)
+        elif button_type == 'rotate_clockwise':
+            return rotate_clockwise(request)
+        elif button_type == 'rotate_counterclockwise':
+            return rotate_counterclockwise(request)
+        elif button_type == 'stop_robot':
+            return stop_robot(request)
+
+        # Pose management buttons
+        elif button_type == 'save_pose':
+            pose_name = request.POST.get('pose_name', 'Unnamed Pose')
+            return save_current_pose(request, pose_name)
+        elif button_type == 'navigate_to_pose':
+            pose_id = request.POST.get('pose_id')
+            if pose_id:
+                return navigate_to_pose(request, pose_id)
+            else:
+                messages.error(request, "No pose selected")
+                return redirect('button_page')
+
+    return HttpResponse("Invalid request.", status=400)
+
+
+def button1_action(request):
+    """Python method for Button 1 functionality."""
+    # Perform some logic here
+    print("Button 1 called!")
+    messages.success(request, "Button 1 executed successfully!")
+    return redirect('button_page')
+
+
+def button2_action(request):
+    """Python method for Button 2 functionality."""
+    # Perform some logic here
+    print("Button 2 called!")
+    messages.success(request, "Button 2 executed successfully!")
+    return redirect('button_page')
+
+
+# Movement control functions
+def move_forward(request):
+    """Send command to move the robot forward."""
+    success = send_movement_command(linear_x=0.5, linear_y=0.0, angular_z=0.0)
+
+    message = "Moving forward" if success else "Failed to send movement command"
+    status = "success" if success else "error"
+
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+
+    # Return JSON response for AJAX requests
+    if is_ajax(request):
+        return JsonResponse({
+            'status': status,
+            'message': message
+        })
+
+    # Return redirect for non-AJAX requests
+    return redirect('button_page')
+
+
+def move_backward(request):
+    """Send command to move the robot backward."""
+    success = send_movement_command(linear_x=-0.5, linear_y=0.0, angular_z=0.0)
+
+    message = "Moving backward" if success else "Failed to send movement command"
+    status = "success" if success else "error"
+
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+
+    # Return JSON response for AJAX requests
+    if is_ajax(request):
+        return JsonResponse({
+            'status': status,
+            'message': message
+        })
+
+    # Return redirect for non-AJAX requests
+    return redirect('button_page')
+
+
+def move_left(request):
+    """Send command to move the robot left (sideways)."""
+    success = send_movement_command(linear_x=0.0, linear_y=0.5, angular_z=0.0)
+
+    message = "Moving left" if success else "Failed to send movement command"
+    status = "success" if success else "error"
+
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+
+    # Return JSON response for AJAX requests
+    if is_ajax(request):
+        return JsonResponse({
+            'status': status,
+            'message': message
+        })
+
+    # Return redirect for non-AJAX requests
+    return redirect('button_page')
+
+
+def move_right(request):
+    """Send command to move the robot right (sideways)."""
+    success = send_movement_command(linear_x=0.0, linear_y=-0.5, angular_z=0.0)
+
+    message = "Moving right" if success else "Failed to send movement command"
+    status = "success" if success else "error"
+
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+
+    # Return JSON response for AJAX requests
+    if is_ajax(request):
+        return JsonResponse({
+            'status': status,
+            'message': message
+        })
+
+    # Return redirect for non-AJAX requests
+    return redirect('button_page')
+
+
+def rotate_clockwise(request):
+    """Send command to rotate the robot clockwise."""
+    success = send_movement_command(linear_x=0.0, linear_y=0.0, angular_z=-0.5)
+
+    message = "Rotating clockwise" if success else "Failed to send movement command"
+    status = "success" if success else "error"
+
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+
+    # Return JSON response for AJAX requests
+    if is_ajax(request):
+        return JsonResponse({
+            'status': status,
+            'message': message
+        })
+
+    # Return redirect for non-AJAX requests
+    return redirect('button_page')
+
+
+def rotate_counterclockwise(request):
+    """Send command to rotate the robot counter-clockwise."""
+    success = send_movement_command(linear_x=0.0, linear_y=0.0, angular_z=0.5)
+
+    message = "Rotating counter-clockwise" if success else "Failed to send movement command"
+    status = "success" if success else "error"
+
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+
+    # Return JSON response for AJAX requests
+    if is_ajax(request):
+        return JsonResponse({
+            'status': status,
+            'message': message
+        })
+
+    # Return redirect for non-AJAX requests
+    return redirect('button_page')
+
+
+def stop_robot(request):
+    """Send command to stop the robot."""
+    success = send_movement_command(linear_x=0.0, linear_y=0.0, angular_z=0.0)
+
+    message = "Robot stopped" if success else "Failed to send movement command"
+    status = "success" if success else "error"
+
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+
+    # Return JSON response for AJAX requests
+    if is_ajax(request):
+        return JsonResponse({
+            'status': status,
+            'message': message
+        })
+
+    # Return redirect for non-AJAX requests
+    return redirect('button_page')
+
+
+def save_current_pose(request, pose_name):
+    """
+    Save the current robot pose to the database.
+
+    Args:
+        request: The HTTP request object
+        pose_name (str): Name for the saved pose
+
+    Returns:
+        HttpResponse: Redirect to the main page with a success message
+    """
+    # Get the current pose from the MQTT client
+    current_pose = get_current_pose()
+
+    try:
+        # Create a new RobotPose object
+        pose = RobotPose(
+            name=pose_name,
+            position_x=current_pose['position']['x'],
+            position_y=current_pose['position']['y'],
+            orientation_z=current_pose['orientation']['z']
+        )
+        pose.save()
+        # Add success message
+        messages.success(request, f"Pose '{pose_name}' saved successfully!")
+        # Redirect to the main page
+        return redirect('button_page')
+    except Exception as e:
+        print(f"Error saving pose: {e}")
+        messages.error(request, f"Error saving pose: {e}")
+        return redirect('button_page')
+
+
+def navigate_to_pose(request, pose_id):
+    """
+    Send a navigation goal to move the robot to a saved pose.
+
+    Args:
+        request: The HTTP request object
+        pose_id (int): ID of the saved pose
+
+    Returns:
+        HttpResponse: Redirect to the main page with a success or error message
+    """
+    try:
+        # Get the pose from the database
+        pose = RobotPose.objects.get(id=pose_id)
+
+        # Send the move_base_goal command
+        success = send_move_base_goal(
+            position_x=pose.position_x,
+            position_y=pose.position_y,
+            orientation_z=pose.orientation_z
+        )
+
+        if success:
+            messages.success(request, f"Navigating to pose '{pose.name}'")
+        else:
+            messages.error(request, "Failed to send navigation goal")
+        return redirect('button_page')
+    except RobotPose.DoesNotExist:
+        messages.error(request, "Pose not found")
+        return redirect('button_page')
+    except Exception as e:
+        print(f"Error navigating to pose: {e}")
+        messages.error(request, f"Error navigating to pose: {e}")
+        return redirect('button_page')
+
+
+def get_map_view(request):
+    """Return the current 2D SLAM map data as JSON."""
+    map_data = get_map_data()
+    return JsonResponse(map_data)
+
+
+@require_POST
+def shutdown_pi(request):
+    """Shutdown the Raspberry Pi host system.
+
+    This view requires a POST request (CSRF-protected).
+    It attempts to call 'sudo /sbin/shutdown -h now'. Deployment must
+    allow the Django process to run this without password, e.g. via sudoers:
+
+        www-data ALL=(root) NOPASSWD: /sbin/shutdown
+
+    In Docker, shutting down the host requires additional privileges or
+    running the container with appropriate permissions (--privileged) and
+    a proper sudoers setup inside the container mapping to the host.
+    """
+    # Detect availability of shutdown binary
+    shutdown_bin = shutil.which('shutdown') or '/sbin/shutdown'
+    cmd = ['sudo', shutdown_bin, '-h', 'now']
+    try:
+        # Fire-and-forget; system may go down immediately
+        subprocess.Popen(cmd)
+        message = 'Shutdown command issued. The system will power off shortly.'
+        status = 'success'
+        code = 200
+    except Exception as e:
+        message = f'Failed to issue shutdown: {e}'
+        status = 'error'
+        code = 500
+
+    if is_ajax(request):
+        return JsonResponse({'status': status, 'message': message}, status=code)
+
+    if status == 'success':
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+    return redirect('button_page')
+
+
+@require_POST
+def restart_pi(request):
+    """Restart the Raspberry Pi host system.
+
+    Similar to shutdown_pi, but triggers a reboot. Requires sudo privilege
+    for the shutdown binary with -r flag, e.g. in sudoers:
+
+        www-data ALL=(root) NOPASSWD: /sbin/shutdown
+
+    Note: In containerized deployments, additional privileges may be needed
+    for the container to affect the host.
+    """
+    shutdown_bin = shutil.which('shutdown') or '/sbin/shutdown'
+    cmd = ['sudo', shutdown_bin, '-r', 'now']
+    try:
+        subprocess.Popen(cmd)
+        message = 'Restart command issued. The system will reboot shortly.'
+        status = 'success'
+        code = 200
+    except Exception as e:
+        message = f'Failed to issue restart: {e}'
+        status = 'error'
+        code = 500
+
+    if is_ajax(request):
+        return JsonResponse({'status': status, 'message': message}, status=code)
+
+    if status == 'success':
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+    return redirect('button_page')
+
+
+@require_GET
+def map_image(request):
+    """Serve the map image from /robot/data/map.png.
+
+    Returns 404 if the file is missing. Intended for display in the dashboard.
+    """
+    import os
+    img_path = '/robot/data/map.png'
+    if not os.path.exists(img_path):
+        return HttpResponse(status=404)
+    try:
+        return FileResponse(open(img_path, 'rb'), content_type='image/png')
+    except Exception:
+        # If file cannot be opened/read for some reason
+        return HttpResponse(status=404)
+
+
+def mqtt_stream_view(request):
+    """Stream MQTT messages to the frontend using SSE."""
+
+    def event_stream():
+        last_status = None
+        last_status_time = 0
+
+        while True:
+            current_time = time.time()
+            current_status = get_connection_status()
+
+            # Send a message if there's one in the queue
+            if not message_queue.empty():
+                message = message_queue.get()  # Get the latest message
+                # Add connection status to the message
+                message['mqtt_connected'] = current_status
+                yield f"data: {json.dumps(message)}\n\n"  # SSE format
+                current_size = message_queue.qsize()
+                print(f"Current size: {current_size}")
+                last_status = current_status
+                last_status_time = current_time
+            # Send a status update every 5 seconds if status changed or no message was sent in the last 5 seconds
+            elif current_status != last_status or (current_time - last_status_time) > 5:
+                status_message = {
+                    'mqtt_connected': current_status,
+                    'status_update': True
+                }
+                yield f"data: {json.dumps(status_message)}\n\n"
+                last_status = current_status
+                last_status_time = current_time
+
+            time.sleep(1)  # Prevent high CPU utilization
+
+    return StreamingHttpResponse(event_stream(), content_type='text/event-stream')
