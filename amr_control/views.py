@@ -10,6 +10,7 @@ from django.http import StreamingHttpResponse
 from django.views.decorators.http import require_POST, require_GET
 import subprocess
 import shutil
+import os
 
 
 def is_ajax(request):
@@ -340,20 +341,28 @@ def shutdown_pi(request):
     running the container with appropriate permissions (--privileged) and
     a proper sudoers setup inside the container mapping to the host.
     """
-    # Detect availability of shutdown binary
+    # Detect availability of shutdown binary; degrade gracefully if missing
     shutdown_bin = shutil.which('shutdown') or '/sbin/shutdown'
     sudo_bin = shutil.which('sudo')
-    cmd = [shutdown_bin, '-h', 'now'] if sudo_bin is None else [sudo_bin, shutdown_bin, '-h', 'now']
-    try:
-        # Fire-and-forget; system may go down immediately
-        subprocess.Popen(cmd)
-        message = 'Shutdown command issued. The system will power off shortly.'
-        status = 'success'
+
+    # If the shutdown binary does not actually exist, return a friendly message instead of 500
+    if not shutil.which('shutdown') and not os.path.exists('/sbin/shutdown'):
+        message = 'Shutdown is not available in this environment (shutdown binary not found).'
+        status = 'unavailable'
         code = 200
-    except Exception as e:
-        message = f'Failed to issue shutdown: {e}'
-        status = 'error'
-        code = 500
+    else:
+        cmd = [shutdown_bin, '-h', 'now'] if sudo_bin is None else [sudo_bin, shutdown_bin, '-h', 'now']
+        try:
+            # Fire-and-forget; system may go down immediately
+            subprocess.Popen(cmd)
+            message = 'Shutdown command issued. The system will power off shortly.'
+            status = 'success'
+            code = 200
+        except Exception as e:
+            # Return a friendly non-500 response so the UI can show a toast instead of error page
+            message = f'Failed to issue shutdown: {e}'
+            status = 'error'
+            code = 200
 
     if is_ajax(request):
         return JsonResponse({'status': status, 'message': message}, status=code)
@@ -379,16 +388,23 @@ def restart_pi(request):
     """
     shutdown_bin = shutil.which('shutdown') or '/sbin/shutdown'
     sudo_bin = shutil.which('sudo')
-    cmd = [shutdown_bin, '-r', 'now'] if sudo_bin is None else [sudo_bin, shutdown_bin, '-r', 'now']
-    try:
-        subprocess.Popen(cmd)
-        message = 'Restart command issued. The system will reboot shortly.'
-        status = 'success'
+
+    # If the shutdown binary does not actually exist, return a friendly message instead of 500
+    if not shutil.which('shutdown') and not os.path.exists('/sbin/shutdown'):
+        message = 'Restart is not available in this environment (shutdown binary not found).'
+        status = 'unavailable'
         code = 200
-    except Exception as e:
-        message = f'Failed to issue restart: {e}'
-        status = 'error'
-        code = 500
+    else:
+        cmd = [shutdown_bin, '-r', 'now'] if sudo_bin is None else [sudo_bin, shutdown_bin, '-r', 'now']
+        try:
+            subprocess.Popen(cmd)
+            message = 'Restart command issued. The system will reboot shortly.'
+            status = 'success'
+            code = 200
+        except Exception as e:
+            message = f'Failed to issue restart: {e}'
+            status = 'error'
+            code = 200
 
     if is_ajax(request):
         return JsonResponse({'status': status, 'message': message}, status=code)
