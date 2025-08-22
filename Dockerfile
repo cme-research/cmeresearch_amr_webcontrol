@@ -17,9 +17,8 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-USER root
+# create folder for mqtt pid file
 RUN mkdir -p /var/run/mosquitto && chown -R mosquitto:mosquitto /var/run/mosquitto
-USER mosquitto
 
 
 # Copy project files
