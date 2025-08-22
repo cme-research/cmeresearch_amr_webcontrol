@@ -125,3 +125,68 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
+
+# ------------------------------------------------------------
+# Logging
+# Configure console logging so logs are visible via `docker logs`
+# LOG_LEVEL can be overridden via environment variable.
+# ------------------------------------------------------------
+import os
+
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        },
+        'server': {
+            # Matches Django's runserver format for requests
+            'format': '%(asctime)s [%(levelname)s] %(message)s',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard',
+            'stream': 'ext://sys.stdout',
+        },
+        'server_console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'server',
+            'stream': 'ext://sys.stdout',
+        },
+    },
+    'loggers': {
+        # Django core logs
+        'django': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+        # Request/response logging when using runserver
+        'django.server': {
+            'handlers': ['server_console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Project apps
+        'django_project': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+        'amr_control': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+        'accounts': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+    }
+}
