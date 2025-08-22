@@ -128,6 +128,19 @@ python manage.py test amr_control
 python manage.py test django_project
 ```
 
+## enable reboot, shutdown via webapp
+
+Add the following to /etc/sudoers
+
+```
+sudo visudo
+```
+
+```
+robot ALL=(ALL) NOPASSWD: /sbin/shutdown
+robot ALL=(ALL) NOPASSWD: /sbin/restart
+```
+
 
 ## Project layout
 Key paths relative to repo root:
