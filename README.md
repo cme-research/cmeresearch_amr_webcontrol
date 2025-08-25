@@ -161,3 +161,33 @@ Key paths relative to repo root:
 
 ## License
 Add your project’s license here.
+
+
+## MQTT Reboot Listener (standalone)
+
+A standalone script listens for a reboot trigger over MQTT and reboots the host.
+
+Path: scripts/mqtt_rebooter.py
+
+Usage:
+- Install deps: pip install -r requirements.txt
+- Run: python3 scripts/mqtt_rebooter.py
+
+Configuration (environment variables):
+- MQTT_BROKER_URL: MQTT broker host (default: localhost)
+- MQTT_BROKER_PORT: MQTT broker port (default: 1883)
+- MQTT_REBOOT_TOPIC: Topic to subscribe for reboot triggers (default: amr_control/reboot)
+- APP_CONFIG_FILE: Optional path to app_config.json. The script also attempts repo_root/app_config.json.
+  It reads:
+  - mqtt.broker_url, mqtt.broker_port, mqtt.reboot_topic
+  - topics.reboot (alternative place for the reboot topic)
+
+Accepted payloads:
+- Plain text containing "reboot" or "restart" (case-insensitive)
+- JSON: {"action":"reboot"} or {"command":"reboot"}
+
+Reboot behavior:
+- If running in Docker with /var/run/docker.sock and reboot.sh present, it invokes reboot.sh to reboot the host.
+- Otherwise it tries install/bin/restartSystem (sudo reboot now), then falls back to systemctl reboot or reboot.
+
+Note: Reboot requires appropriate privileges. In containers, host reboot requires special privileges and is generally discouraged.
