@@ -1,6 +1,6 @@
 # Multi-arch base: works on Raspberry Pi 5 (arm64) and x86_64
 FROM ubuntu:22.04
-RUN apt update && apt install -y python3 python3-pip systemd util-linux curl jq
+RUN apt update && apt install -y python3 python3-pip systemd util-linux curl jq sudo systemd systemd-sysv util-linux
 
 # Prevent Python from writing .pyc files and enable unbuffered logs
 ENV PYTHONDONTWRITEBYTECODE=1 \
