@@ -96,6 +96,44 @@ def attempt_reboot(dry_run: bool = False) -> int:
     return 1
 
 
+def attempt_shutdown(dry_run: bool = False) -> int:
+    # 1) systemctl poweroff (or halt)
+    systemctl = find_command(["systemctl"])  # rely on PATH
+    if systemctl:
+        result = run(["sudo", systemctl, "poweroff"], dry_run=dry_run)
+        if result.returncode == 0:
+            return 0
+        else:
+            print(f"systemctl poweroff failed with code {result.returncode}")
+        # Try halt as a fallback via systemctl
+        result = run(["sudo", systemctl, "halt"], dry_run=dry_run)
+        if result.returncode == 0:
+            return 0
+        else:
+            print(f"systemctl halt failed with code {result.returncode}")
+
+    # 2) shutdown -h now
+    shutdown_cmd = find_command(["shutdown"]) or ("/sbin/shutdown" if os.path.exists("/sbin/shutdown") else None)
+    if shutdown_cmd:
+        result = run(["sudo", shutdown_cmd, "-h", "now"], dry_run=dry_run)
+        if result.returncode == 0:
+            return 0
+        else:
+            print(f"shutdown -h now failed with code {result.returncode}")
+
+    # 3) poweroff
+    poweroff_cmd = find_command(["poweroff"]) or ("/sbin/poweroff" if os.path.exists("/sbin/poweroff") else None)
+    if poweroff_cmd:
+        result = run(["sudo", poweroff_cmd], dry_run=dry_run)
+        if result.returncode == 0:
+            return 0
+        else:
+            print(f"poweroff failed with code {result.returncode}")
+
+    print("No suitable shutdown method succeeded or is available.")
+    return 1
+
+
 # --- MQTT support ---
 
 def _load_app_config() -> dict:
@@ -150,29 +188,55 @@ def _parse_mqtt_trigger_payload(payload: bytes) -> bool:
     return False
 
 
-def _run_mqtt_listener(broker: str, port: int, topic: str, dry_run: bool) -> int:
+def _parse_mqtt_shutdown_payload(payload: bytes) -> bool:
+    """Return True if payload is a shutdown trigger."""
+    try:
+        text = payload.decode('utf-8', errors='ignore').strip().lower()
+    except Exception:
+        text = ''
+    if text in {"shutdown", "poweroff", "halt", "now", "true", "1"}:
+        return True
+    try:
+        data = json.loads(payload.decode('utf-8', errors='ignore'))
+        if isinstance(data, dict):
+            action = str(data.get('action') or data.get('command') or '').strip().lower()
+            return action == 'shutdown'
+    except Exception:
+        pass
+    return False
+
+
+def _run_mqtt_listener(broker: str, port: int, reboot_topic: str, shutdown_topic: str, dry_run: bool) -> int:
     import paho.mqtt.client as mqtt  # lazy import
 
     triggered = {'done': False, 'rc': 0}
 
     def on_connect(client, userdata, flags, rc, properties=None):
-        print(f"[MQTT] Connected rc={rc}, subscribing to {topic}")
+        print(f"[MQTT] Connected rc={rc}, subscribing to reboot={reboot_topic} and shutdown={shutdown_topic}")
         try:
-            client.subscribe(topic)
+            client.subscribe(reboot_topic)
+            if shutdown_topic:
+                client.subscribe(shutdown_topic)
         except Exception as e:
             print(f"[MQTT] Subscribe failed: {e}")
 
     def on_message(client, userdata, msg):
         print(f"[MQTT] Message on {msg.topic}: {msg.payload}")
-        if _parse_mqtt_trigger_payload(msg.payload):
-            print("[MQTT] Reboot trigger received")
-            triggered['rc'] = attempt_reboot(dry_run=dry_run)
-            triggered['done'] = True
-            # After requesting reboot, stop loop (system will likely reboot)
-            try:
-                client.disconnect()
-            except Exception:
-                pass
+        try:
+            if msg.topic == reboot_topic and _parse_mqtt_trigger_payload(msg.payload):
+                print("[MQTT] Reboot trigger received")
+                triggered['rc'] = attempt_reboot(dry_run=dry_run)
+                triggered['done'] = True
+            elif shutdown_topic and msg.topic == shutdown_topic and _parse_mqtt_shutdown_payload(msg.payload):
+                print("[MQTT] Shutdown trigger received")
+                triggered['rc'] = attempt_shutdown(dry_run=dry_run)
+                triggered['done'] = True
+        finally:
+            if triggered['done']:
+                try:
+                    client.disconnect()
+                except Exception:
+                    pass
 
     def on_disconnect(client, userdata, rc, properties=None):
         print(f"[MQTT] Disconnected rc={rc}")
@@ -219,7 +283,7 @@ def _run_mqtt_listener(broker: str, port: int, topic: str, dry_run: bool) -> int
     except Exception:
         max_delay = 60
 
-    print(f"[MQTT] Connecting to {broker}:{port}, topic={topic}")
+    print(f"[MQTT] Connecting to {broker}:{port}, topics=[reboot:{reboot_topic}, shutdown:{shutdown_topic}]")
     while not stopping['stop']:
         try:
             client.connect(broker, port, keepalive=60)
@@ -262,8 +326,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="Show what would happen without rebooting.")
 
     # MQTT options
-    parser.add_argument("--mqtt-listen", action="store_true", help="Run as an MQTT listener waiting for reboot trigger.")
+    parser.add_argument("--mqtt-listen", action="store_true", help="Run as an MQTT listener waiting for reboot/shutdown triggers.")
     parser.add_argument("--mqtt-topic", default=os.getenv('REBOOT_TOPIC', 'amr_control/system/reboot'), help="MQTT topic to subscribe for reboot trigger.")
+    parser.add_argument("--mqtt-topic-shutdown", default=os.getenv('SHUTDOWN_TOPIC', 'amr_control/system/shutdown'), help="MQTT topic to subscribe for shutdown trigger.")
     parser.add_argument("--mqtt-broker", default=None, help="MQTT broker hostname/IP. Overrides app_config.json.")
     parser.add_argument("--mqtt-port", type=int, default=None, help="MQTT broker port. Overrides app_config.json.")
 
@@ -273,11 +338,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         conf = _load_app_config()
         broker = args.mqtt_broker or conf['mqtt']['broker_url']
         port = args.mqtt_port or conf['mqtt']['broker_port']
-        print("Starting MQTT listener for reboot trigger...")
+        print("Starting MQTT listener for reboot/shutdown triggers...")
         if args.dry_run:
-            print("Dry-run mode: will not actually reboot upon trigger.")
+            print("Dry-run mode: will not actually reboot/shutdown upon trigger.")
         # In MQTT mode, we assume operator intent via topic, so we don't require --yes.
-        return _run_mqtt_listener(broker, port, args.mqtt_topic, dry_run=args.dry_run)
+        return _run_mqtt_listener(broker, port, args.mqtt_topic, args.mqtt_topic_shutdown, dry_run=args.dry_run)
 
     # CLI direct invocation mode
     if not args.dry_run and not args.yes:
