@@ -19,10 +19,11 @@ def is_ajax(request):
 
 from django_project.mqtt_client import (
     message_queue, get_connection_status, send_movement_command,
-    send_move_base_goal, get_current_pose, get_map_data
+    send_move_base_goal, get_current_pose, get_map_data, mqtt_client
 )
 from .models import RobotPose
 import json
+import paho.mqtt.client as mqtt
 
 def button_view(request):
     """Render the HTML template with control panels."""
@@ -329,40 +330,33 @@ def get_map_view(request):
 
 @require_POST
 def shutdown_pi(request):
-    """Shutdown the Raspberry Pi host system.
+    """Request shutdown via MQTT instead of directly calling system shutdown.
 
-    This view requires a POST request (CSRF-protected).
-    It attempts to call 'sudo /sbin/shutdown -h now'. Deployment must
-    allow the Django process to run this without password, e.g. via sudoers:
-
-        www-data ALL=(root) NOPASSWD: /sbin/shutdown
-
-    In Docker, shutting down the host requires additional privileges or
-    running the container with appropriate permissions (--privileged) and
-    a proper sudoers setup inside the container mapping to the host.
+    Publishes a message to the MQTT topic 'amr_control/system/shutdown'.
+    An external supervisor should handle the actual shutdown.
     """
-    # Detect availability of shutdown binary; degrade gracefully if missing
-    shutdown_bin = shutil.which('shutdown') or '/sbin/shutdown'
-    sudo_bin = shutil.which('sudo')
+    topic = 'amr_control/system/shutdown'
+    payload = 'true'
 
-    # If the shutdown binary does not actually exist, return a friendly message instead of 500
-    if not shutil.which('shutdown') and not os.path.exists('/sbin/shutdown'):
-        message = 'Shutdown is not available in this environment (shutdown binary not found).'
-        status = 'unavailable'
-        code = 200
-    else:
-        cmd = [shutdown_bin, '-h', 'now'] if sudo_bin is None else [sudo_bin, shutdown_bin, '-h', 'now']
-        try:
-            # Fire-and-forget; system may go down immediately
-            subprocess.Popen(cmd)
-            message = 'Shutdown command issued. The system will power off shortly.'
-            status = 'success'
-            code = 200
-        except Exception as e:
-            # Return a friendly non-500 response so the UI can show a toast instead of error page
-            message = f'Failed to issue shutdown: {e}'
+    try:
+        if not get_connection_status():
+            message = 'Cannot send shutdown: MQTT client not connected'
             status = 'error'
             code = 200
+        else:
+            result = mqtt_client.publish(topic, payload)
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                message = 'Shutdown request sent via MQTT.'
+                status = 'success'
+                code = 200
+            else:
+                message = f'Failed to publish shutdown MQTT message (rc={result.rc}).'
+                status = 'error'
+                code = 200
+    except Exception as e:
+        message = f'Error sending shutdown MQTT message: {e}'
+        status = 'error'
+        code = 200
 
     if is_ajax(request):
         return JsonResponse({'status': status, 'message': message}, status=code)
@@ -376,35 +370,33 @@ def shutdown_pi(request):
 
 @require_POST
 def restart_pi(request):
-    """Restart the Raspberry Pi host system.
+    """Request restart via MQTT instead of directly calling system shutdown.
 
-    Similar to shutdown_pi, but triggers a reboot. Requires sudo privilege
-    for the shutdown binary with -r flag, e.g. in sudoers:
-
-        www-data ALL=(root) NOPASSWD: /sbin/shutdown
-
-    Note: In containerized deployments, additional privileges may be needed
-    for the container to affect the host.
+    Publishes a message to the MQTT topic 'amr_control/system/shutdown' with payload 'restart'.
+    An external supervisor should handle the actual reboot.
     """
-    shutdown_bin = shutil.which('shutdown') or '/sbin/shutdown'
-    sudo_bin = shutil.which('sudo')
+    topic = 'amr_control/system/reboot'
+    payload = 'true'
 
-    # If the shutdown binary does not actually exist, return a friendly message instead of 500
-    if not shutil.which('shutdown') and not os.path.exists('/sbin/shutdown'):
-        message = 'Restart is not available in this environment (shutdown binary not found).'
-        status = 'unavailable'
-        code = 200
-    else:
-        cmd = [shutdown_bin, '-r', 'now'] if sudo_bin is None else [sudo_bin, shutdown_bin, '-r', 'now']
-        try:
-            subprocess.Popen(cmd)
-            message = 'Restart command issued. The system will reboot shortly.'
-            status = 'success'
-            code = 200
-        except Exception as e:
-            message = f'Failed to issue restart: {e}'
+    try:
+        if not get_connection_status():
+            message = 'Cannot send restart: MQTT client not connected'
             status = 'error'
             code = 200
+        else:
+            result = mqtt_client.publish(topic, payload)
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                message = 'Restart request sent via MQTT.'
+                status = 'success'
+                code = 200
+            else:
+                message = f'Failed to publish restart MQTT message (rc={result.rc}).'
+                status = 'error'
+                code = 200
+    except Exception as e:
+        message = f'Error sending restart MQTT message: {e}'
+        status = 'error'
+        code = 200
 
     if is_ajax(request):
         return JsonResponse({'status': status, 'message': message}, status=code)

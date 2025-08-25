@@ -33,15 +33,16 @@ class ViewTests(TestCase):
         self.assertEqual(resp.status_code, 405)
 
     def test_shutdown_post_ajax_success(self):
-        with mock.patch('amr_control.views.subprocess.Popen') as popen_mock, \
-             mock.patch('amr_control.views.shutil.which', return_value='/sbin/shutdown'):
-            popen_mock.return_value = mock.Mock()
+        # Simulate connected MQTT and successful publish
+        class PubResult:
+            rc = 0
+        with mock.patch('amr_control.views.get_connection_status', return_value=True), \
+             mock.patch('amr_control.views.mqtt_client.publish', return_value=PubResult()):
             resp = self.client.post(reverse('shutdown_pi'), HTTP_X_REQUESTED_WITH='XMLHttpRequest')
             self.assertEqual(resp.status_code, 200)
             data = resp.json()
             self.assertEqual(data['status'], 'success')
-            self.assertIn('Shutdown command', data['message'])
-            popen_mock.assert_called()
+            self.assertIn('Shutdown request sent via MQTT', data['message'])
 
     def test_handle_button_movement_ajax(self):
         # Patch mqtt client to simulate connected & successful publish
