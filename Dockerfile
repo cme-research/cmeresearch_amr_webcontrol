@@ -10,6 +10,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends mosquitto mosquitto-clients \
     && rm -rf /var/lib/apt/lists/*
 
+# Install openssh-client for shutdown and reboot processes.
+RUN apt-get update \
+    && apt-get install -y openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set work directory
 WORKDIR /app
 
