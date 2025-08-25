@@ -1,71 +1,93 @@
 #!/bin/bash
 set -e
 
-echo "[*] Starting host reboot script..."
+# -------------------------------
+# CONFIGURATION
+# -------------------------------
+HELPER_IMAGE="ubuntu:22.04"
+DOCKER_SOCKET="/var/run/docker.sock"
 
-# --- STEP 1. Check if Docker socket is mounted ---
-if [ ! -S /var/run/docker.sock ]; then
-    echo "[ERROR] Docker socket not found!"
-    echo "        Start the container with: "
-    echo "        docker run -it -v /var/run/docker.sock:/var/run/docker.sock <image> bash"
+# -------------------------------
+# CHECKS
+# -------------------------------
+if [ ! -S "$DOCKER_SOCKET" ]; then
+    echo "❌ Docker socket not found at $DOCKER_SOCKET"
+    echo "Run the container with:  -v /var/run/docker.sock:/var/run/docker.sock"
     exit 1
 fi
 
-# --- STEP 2. Check for required tools ---
-for cmd in curl jq; do
-    if ! command -v $cmd &>/dev/null; then
-        echo "[*] Installing missing dependency: $cmd"
-        if command -v apt-get &>/dev/null; then
-            apt-get update -qq && apt-get install -y $cmd >/dev/null
-        elif command -v apk &>/dev/null; then
-            apk add --no-cache $cmd >/dev/null
-        else
-            echo "[ERROR] Cannot install $cmd. Install it manually and retry."
-            exit 1
-        fi
-    fi
-done
-
-# --- STEP 3. Check if Alpine image exists on host ---
-echo "[*] Checking if Alpine image exists on host..."
-IMAGE_CHECK=$(curl --silent --unix-socket /var/run/docker.sock http://localhost/images/json | jq -r '.[].RepoTags' | grep -m1 '^alpine:latest$' || true)
-
-if [ -z "$IMAGE_CHECK" ]; then
-    echo "[*] Alpine image not found. Pulling..."
-    curl --silent --unix-socket /var/run/docker.sock -X POST "http://localhost/images/create?fromImage=alpine:latest" || {
-        echo "[ERROR] Failed to pull Alpine image!"
-        exit 1
-    }
-    echo "[*] Alpine image pulled successfully."
-else
-    echo "[*] Alpine image already available."
+# Check if curl is installed, otherwise install it
+if ! command -v curl &>/dev/null; then
+    echo "⚡ Installing curl..."
+    apt-get update -qq && apt-get install -y curl || \
+    apk add --no-cache curl || \
+    yum install -y curl
 fi
 
-# --- STEP 4. Create helper container to reboot host ---
-echo "[*] Creating helper container..."
-CREATE_OUTPUT=$(curl --silent --unix-socket /var/run/docker.sock \
-    -H "Content-Type: application/json" \
-    -d '{"Image":"alpine","Cmd":["/sbin/reboot"],"HostConfig":{"Privileged":true,"PidMode":"host"}}' \
-    -X POST http://localhost/containers/create)
+# Check if jq is installed, otherwise install it
+if ! command -v jq &>/dev/null; then
+    echo "⚡ Installing jq..."
+    apt-get update -qq && apt-get install -y jq || \
+    apk add --no-cache jq || \
+    yum install -y jq
+fi
 
-CID=$(echo "$CREATE_OUTPUT" | jq -r '.Id')
+# -------------------------------
+# PULL HELPER IMAGE IF MISSING
+# -------------------------------
+echo "⚡ Checking if helper image ($HELPER_IMAGE) is available..."
+PULL_RESULT=$(curl --silent --unix-socket $DOCKER_SOCKET \
+  -X POST "http://localhost/images/create?fromImage=$HELPER_IMAGE")
+
+if [[ "$PULL_RESULT" == *"error"* ]]; then
+    echo "❌ Failed to pull $HELPER_IMAGE. Check your network or permissions."
+    echo "Response: $PULL_RESULT"
+    exit 1
+fi
+
+# -------------------------------
+# CREATE HELPER CONTAINER
+# -------------------------------
+echo "⚡ Creating helper container to reboot the host..."
+CID=$(curl --silent --unix-socket $DOCKER_SOCKET \
+  -H "Content-Type: application/json" \
+  -d "{
+        \"Image\": \"$HELPER_IMAGE\",
+        \"HostConfig\": {
+            \"Privileged\": true,
+            \"PidMode\": \"host\"
+        },
+        \"Cmd\": [\"bash\", \"-c\", \"\
+            if command -v systemctl >/dev/null 2>&1; then \
+                echo 'Using systemctl to reboot...'; \
+                systemctl reboot; \
+            elif command -v reboot >/dev/null 2>&1; then \
+                echo 'Using reboot binary...'; \
+                reboot; \
+            else \
+                echo 'Using sysrq-trigger to force reboot...'; \
+                echo 1 > /proc/sys/kernel/sysrq; \
+                echo b > /proc/sysrq-trigger; \
+            fi
+        \"]
+    }" \
+  -X POST http://localhost/containers/create | jq -r '.Id')
 
 if [ "$CID" == "null" ] || [ -z "$CID" ]; then
-    echo "[ERROR] Failed to create reboot container!"
-    echo "API Response: $CREATE_OUTPUT"
+    echo "❌ Failed to create helper container"
     exit 1
 fi
 
-echo "[*] Created helper container: $CID"
+# -------------------------------
+# START HELPER CONTAINER
+# -------------------------------
+echo "⚡ Starting helper container: $CID"
+START_RESULT=$(curl --silent --unix-socket $DOCKER_SOCKET \
+    -X POST http://localhost/containers/$CID/start)
 
-# --- STEP 5. Start helper container ---
-echo "[*] Starting helper container to trigger reboot..."
-START_OUTPUT=$(curl --silent --unix-socket /var/run/docker.sock -X POST http://localhost/containers/$CID/start)
-
-if [ -n "$START_OUTPUT" ]; then
-    echo "[ERROR] Failed to start reboot container!"
-    echo "API Response: $START_OUTPUT"
+if [ -n "$START_RESULT" ]; then
+    echo "❌ Failed to start helper container: $START_RESULT"
     exit 1
 fi
 
-echo "[*] Host reboot initiated. Bye! 🚀"
+echo "✅ Reboot command sent to the host! The system should restart shortly."
