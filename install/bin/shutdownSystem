@@ -1,7 +1,0 @@
-#!/bin/bash
-
-echo "Shutdown system"
-
-sudo shutdown -h now
-
-exit 0

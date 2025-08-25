@@ -198,14 +198,11 @@ def _run_mqtt_listener(broker: str, port: int, topic: str, dry_run: bool) -> int
         except Exception as e:
             print(f"[MQTT] tls_set error: {e}")
 
-    print(f"[MQTT] Connecting to {broker}:{port}, topic={topic}")
-    client.connect(broker, port, keepalive=60)
-
-    # Graceful shutdown on SIGINT/SIGTERM
+    # Graceful shutdown on SIGINT/SIGTERM (set before connecting so we can cancel waiting)
     stopping = {'stop': False}
 
     def _stop(signum, frame):
-        print(f"[MQTT] Caught signal {signum}, stopping loop...")
+        print(f"[MQTT] Caught signal {signum}, stopping...")
         stopping['stop'] = True
         try:
             client.disconnect()
@@ -214,6 +211,38 @@ def _run_mqtt_listener(broker: str, port: int, topic: str, dry_run: bool) -> int
 
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
+
+    # Retry loop waiting for broker to come up
+    delay = 1
+    try:
+        max_delay = int(os.getenv('MQTT_MAX_RETRY_DELAY', '60'))
+    except Exception:
+        max_delay = 60
+
+    print(f"[MQTT] Connecting to {broker}:{port}, topic={topic}")
+    while not stopping['stop']:
+        try:
+            client.connect(broker, port, keepalive=60)
+            # Configure automatic reconnect backoff for subsequent disconnects
+            try:
+                client.reconnect_delay_set(min_delay=1, max_delay=max_delay)
+            except Exception:
+                pass
+            print("[MQTT] Initial connection successful.")
+            break
+        except Exception as e:
+            print(f"[MQTT] Connect failed: {e}. Retrying in {delay}s ...")
+            # Wait with exponential backoff, but allow interruption
+            for _ in range(delay * 10):  # check stop flag every 0.1s
+                if stopping['stop']:
+                    break
+                time.sleep(0.1)
+            if stopping['stop']:
+                break
+            delay = min(delay * 2, max_delay)
+
+    if stopping['stop']:
+        return triggered['rc']
 
     client.loop_start()
     try:

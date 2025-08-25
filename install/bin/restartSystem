@@ -1,7 +1,0 @@
-#!/bin/bash
-
-echo "System reboot requested"
-
-sudo reboot now
-
-exit 0

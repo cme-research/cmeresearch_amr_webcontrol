@@ -105,7 +105,8 @@ The endpoints POST /shutdown/ and POST /restart/ trigger:
 To allow the Django process (e.g., running as www-data) to execute shutdown without a password, configure sudoers accordingly on the host:
 
 ```
-www-data ALL=(root) NOPASSWD: /sbin/shutdown
+robot ALL=(ALL) NOPASSWD: /sbin/shutdown
+robot ALL=(ALL) NOPASSWD: /sbin/reboot
 ```
 
 Caveats:
@@ -138,9 +139,114 @@ sudo visudo
 
 ```
 robot ALL=(ALL) NOPASSWD: /sbin/shutdown
-robot ALL=(ALL) NOPASSWD: /sbin/restart
+robot ALL=(ALL) NOPASSWD: /sbin/reboot
 ```
 
+## Autostart reboot_system (MQTT listener) on Raspberry Pi
+
+The reboot listener script will wait for the MQTT broker to become available and will reboot the Pi when it receives a trigger on the configured topic (default: amr_control/system/reboot).
+
+Script path:
+- install/bin/reboot_system.py
+
+Run flags (typical):
+- --mqtt-listen to run in listener mode
+- optional: --mqtt-topic amr_control/system/reboot (defaults to this)
+- It reads the broker host/port from app_config.json by default; override with --mqtt-broker/--mqtt-port if needed.
+
+Recommended: systemd service
+1) Create a systemd unit file as root:
+
+```
+sudo nano /etc/systemd/system/reboot-system-listener.service
+```
+
+Paste:
+```
+[Unit]
+Description=AMR MQTT Reboot Listener
+Wants=network-online.target
+After=network-online.target
+# If Mosquitto runs locally and uses a unit name:
+# After=mosquitto.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/cmeresearch_amr_webcontrol
+# Point to your Python and repository path:
+ExecStart=/usr/bin/python3 /home/pi/cmeresearch_amr_webcontrol/install/bin/reboot_system.py --mqtt-listen
+# Environment for config and credentials (adjust as needed):
+Environment=APP_CONFIG_FILE=/home/pi/cmeresearch_amr_webcontrol/app_config.json
+# Optional auth/TLS (uncomment and set if your broker requires it)
+# Environment=MQTT_USERNAME=myuser
+# Environment=MQTT_PASSWORD=mypassword
+# Environment=MQTT_TLS=true
+# Optional: cap the max reconnect backoff while waiting for broker
+Environment=MQTT_MAX_RETRY_DELAY=60
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Adjust paths (/home/pi/...) and User/Group to match your setup.
+
+2) Reload systemd, enable and start the service:
+```
+sudo systemctl daemon-reload
+sudo systemctl enable reboot-system-listener.service
+sudo systemctl start reboot-system-listener.service
+```
+
+3) Check status and logs:
+```
+sudo systemctl status reboot-system-listener.service
+journalctl -u reboot-system-listener.service -e -f
+```
+
+Alternative: cron @reboot (simpler, fewer features)
+1) Create a small wrapper script:
+```
+mkdir -p /home/pi/bin
+nano /home/pi/bin/start-rebooter.sh
+```
+
+Contents:
+```
+#!/bin/bash
+export APP_CONFIG_FILE=/home/pi/cmeresearch_amr_webcontrol/app_config.json
+# Optional auth/TLS
+# export MQTT_USERNAME=myuser
+# export MQTT_PASSWORD=mypassword
+# export MQTT_TLS=true
+/usr/bin/python3 /home/pi/cmeresearch_amr_webcontrol/install/bin/reboot_system.py --mqtt-listen >> /home/pi/rebooter.log 2>&1
+```
+
+Make it executable:
+```
+chmod +x /home/pi/bin/start-rebooter.sh
+```
+
+2) Add to cron for user pi:
+```
+crontab -e
+```
+Add the line:
+```
+@reboot /home/pi/bin/start-rebooter.sh
+```
+
+Notes and permissions
+- For the Pi to actually reboot, the effective user must have permission to invoke reboot. The script tries systemctl reboot, reboot, or shutdown -r now via sudo.
+- Configure sudoers (visudo) to allow the chosen user to run reboot/shutdown without a password. Example:
+```
+pi ALL=(ALL) NOPASSWD: /sbin/shutdown, /sbin/reboot
+```
+- Ensure paho-mqtt is installed in the Python environment used by the service.
+- The listener prints informative messages and will keep retrying the broker connection until it comes up; stop it with Ctrl+C (foreground) or systemctl stop.
 
 ## Project layout
 Key paths relative to repo root:
