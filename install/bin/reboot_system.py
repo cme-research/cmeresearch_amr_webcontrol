@@ -77,7 +77,7 @@ def attempt_reboot(dry_run: bool = False) -> int:
     # 2) reboot (try PATH then common absolute path)
     reboot_cmd = find_command(["reboot"]) or ("/sbin/reboot" if os.path.exists("/sbin/reboot") else None)
     if reboot_cmd:
-        result = run([reboot_cmd, "now"], dry_run=dry_run)
+        result = run(["sudo", reboot_cmd, "now"], dry_run=dry_run)
         if result.returncode == 0:
             return 0
         else:
@@ -86,7 +86,7 @@ def attempt_reboot(dry_run: bool = False) -> int:
     # 3) shutdown -r now
     shutdown_cmd = find_command(["shutdown"]) or ("/sbin/shutdown" if os.path.exists("/sbin/shutdown") else None)
     if shutdown_cmd:
-        result = run([shutdown_cmd, "-r", "now"], dry_run=dry_run)
+        result = run(["sudo", shutdown_cmd, "-r", "now"], dry_run=dry_run)
         if result.returncode == 0:
             return 0
         else:
