@@ -68,7 +68,7 @@ def attempt_reboot(dry_run: bool = False) -> int:
     # 1) systemctl reboot
     systemctl = find_command(["systemctl"])  # rely on PATH
     if systemctl:
-        result = run([systemctl, "reboot"], dry_run=dry_run)
+        result = run(["sudo", systemctl, "reboot"], dry_run=dry_run)
         if result.returncode == 0:
             return 0
         else:
