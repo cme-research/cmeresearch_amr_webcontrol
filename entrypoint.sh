@@ -13,8 +13,8 @@ sleep 1
 
 # Run Django migrations
 echo "Running Django migrations..."
-python manage.py migrate --noinput
+python3 manage.py migrate --noinput
 
 # Start Django dev server in the foreground
 echo "Starting Django development server..."
-exec python manage.py runserver 0.0.0.0:8000
+exec python3 manage.py runserver 0.0.0.0:8000

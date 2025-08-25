@@ -1,5 +1,6 @@
 # Multi-arch base: works on Raspberry Pi 5 (arm64) and x86_64
-FROM python:3.11-slim-bookworm
+FROM ubuntu:22.04
+RUN apt update && apt install -y python3 python3-pip systemd util-linux curl jq
 
 # Prevent Python from writing .pyc files and enable unbuffered logs
 ENV PYTHONDONTWRITEBYTECODE=1 \
