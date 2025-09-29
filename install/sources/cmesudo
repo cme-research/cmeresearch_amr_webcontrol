@@ -1,0 +1,4 @@
+robot ALL=(ALL, root) NOPASSWD: /sbin/shutdown
+robot ALL=(ALL, root) NOPASSWD: /sbin/reboot
+
+
