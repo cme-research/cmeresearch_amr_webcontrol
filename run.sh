@@ -1,3 +1,3 @@
 # cmeresearch_amr_webcontrol Dockerfile
 
-docker run -it --rm --name cmexa-webcontrol --network="host" -p 1883:1883 --restart=always cmexa/webcontrol:1.0
+docker run -it --name cmexa-webcontrol --network="host" -p 1883:1883 --restart=always cmexa/webcontrol:1.0
