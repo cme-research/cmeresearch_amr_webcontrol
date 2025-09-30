@@ -1,13 +1,21 @@
 [Unit]
-Description=CMEXA Reboot Service
-After=network.target
+Description=AMR MQTT Reboot Listener Reboot Service
+Wants=network-online.target
+After=network-online.target
 StartLimitIntervalSec=0
 [Service]
 Type=simple
 Restart=always
-RestartSec=1
+RestartSec=3
 User=robot
-ExecStart=/usr/local/bin/reboot_system.py
+Group=robot
+SyslogIdentifier=amr_reboot_listener
+StandardOutput=syslog
+StandardError=syslog
+TimeoutStopSec=5
+WorkingDirectory=/home/robot/git/ros2_ws/src/cmeresearch_amr_webcontrol
+ExecStart=/usr/bin/python3 /home/robot/git/ros2_ws/src/cmeresearch_amr_webcontrol/install/bin/reboot_system.py --mqtt-listen
+Environment=APP_CONFIG_FILE=/home/robot/git/ros2_ws/src/cmeresearch_amr_webcontrol/app_config.json
 
 [Install]
 WantedBy=multi-user.target
