@@ -31,8 +31,8 @@ COPY . .
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Expose Django default port and MQTT broker port
-EXPOSE 8000 1883
+# Expose HTTP redirect port (80), Django port (8000), and MQTT broker port
+EXPOSE 80 8000 1883
 
 # Optional: define settings module explicitly (manage.py sets it too)
 ENV DJANGO_SETTINGS_MODULE=django_project.settings

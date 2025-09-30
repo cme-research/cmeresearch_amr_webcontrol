@@ -8,7 +8,12 @@ mkdir -p /var/run/mosquitto || true
 mosquitto -c /etc/mosquitto/mosquitto.conf -v &
 MOSQ_PID=$!
 
-# Small delay to allow broker to initialize
+# Start lightweight redirect server on port 80 -> 8000 in the background
+echo "Starting HTTP redirect server on port 80 (-> 8000)..."
+python3 /app/redirect_server.py &
+REDIR_PID=$!
+
+# Small delay to allow services to initialize
 sleep 1
 
 # Run Django migrations
