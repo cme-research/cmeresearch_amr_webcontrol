@@ -14,7 +14,7 @@ StandardOutput=syslog
 StandardError=syslog
 TimeoutStopSec=5
 WorkingDirectory=/home/robot/git/ros2_ws/src/cmeresearch_amr_webcontrol
-ExecStart=/usr/bin/python3 /home/robot/git/ros2_ws/src/cmeresearch_amr_webcontrol/install/bin/reboot_system.py --mqtt-listen
+ExecStart=/home/robot/git/ros2_ws/src/cmeresearch_amr_webcontrol/.venv/bin/python /home/robot/git/ros2_ws/src/cmeresearch_amr_webcontrol/install/bin/reboot_system.py --mqtt-listen
 Environment=APP_CONFIG_FILE=/home/robot/git/ros2_ws/src/cmeresearch_amr_webcontrol/app_config.json
 
 [Install]
