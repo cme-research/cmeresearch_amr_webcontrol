@@ -1,0 +1,13 @@
+[Unit]
+Description=CMEXA Reboot Service
+After=network.target
+StartLimitIntervalSec=0
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=robot
+ExecStart=/usr/local/bin/reboot_system.py
+
+[Install]
+WantedBy=multi-user.target
