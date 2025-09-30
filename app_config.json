@@ -2,11 +2,11 @@
   "mqtt": {
     "broker_url": "localhost",
     "broker_port": 1883,
-    "subscribe_topic": "fake_odom"
+    "subscribe_topic": "cmeresearch/cmexa/amr_control/fake_odom"
   },
   "topics": {
-    "movement": "amr_control/cmd_vel",
-    "move_base_goal": "amr_control/move_base_goal"
+    "movement": "cmeresearch/cmexa/amr_control/cmd_vel",
+    "move_base_goal": "cmeresearch/cmexa/amr_control/move_base_goal"
   },
   "map": {
     "width": 20,
