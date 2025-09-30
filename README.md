@@ -196,9 +196,10 @@ Adjust paths (/home/pi/...) and User/Group to match your setup.
 
 2) Reload systemd, enable and start the service:
 ```
+sudo cp install/sources/cmereboot.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable reboot-system-listener.service
-sudo systemctl start reboot-system-listener.service
+sudo systemctl restart cmereboot.service
+sudo systemctl status cmereboot.service
 ```
 
 3) Check status and logs:
