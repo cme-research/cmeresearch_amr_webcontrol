@@ -19,7 +19,7 @@ def is_ajax(request):
 
 from django_project.mqtt_client import (
     message_queue, get_connection_status, send_movement_command,
-    send_move_base_goal, get_current_pose, get_map_data, mqtt_client
+    send_move_base_goal, get_current_pose, get_map_data, mqtt_client, VELOCITY_DEFAULTS
 )
 from .models import RobotPose
 import json
@@ -94,7 +94,7 @@ def button2_action(request):
 # Movement control functions
 def move_forward(request):
     """Send command to move the robot forward."""
-    success = send_movement_command(linear_x=0.2, linear_y=0.0, angular_z=0.0)
+    success = send_movement_command(linear_x=VELOCITY_DEFAULTS.get('forward', 0.2), linear_y=0.0, angular_z=0.0)
 
     message = "Moving forward" if success else "Failed to send movement command"
     status = "success" if success else "error"
@@ -117,7 +117,7 @@ def move_forward(request):
 
 def move_backward(request):
     """Send command to move the robot backward."""
-    success = send_movement_command(linear_x=-0.2, linear_y=0.0, angular_z=0.0)
+    success = send_movement_command(linear_x=VELOCITY_DEFAULTS.get('backward', -0.2), linear_y=0.0, angular_z=0.0)
 
     message = "Moving backward" if success else "Failed to send movement command"
     status = "success" if success else "error"
@@ -140,7 +140,7 @@ def move_backward(request):
 
 def move_left(request):
     """Send command to move the robot left (sideways)."""
-    success = send_movement_command(linear_x=0.0, linear_y=0.2, angular_z=0.0)
+    success = send_movement_command(linear_x=0.0, linear_y=VELOCITY_DEFAULTS.get('left', 0.2), angular_z=0.0)
 
     message = "Moving left" if success else "Failed to send movement command"
     status = "success" if success else "error"
@@ -163,7 +163,7 @@ def move_left(request):
 
 def move_right(request):
     """Send command to move the robot right (sideways)."""
-    success = send_movement_command(linear_x=0.0, linear_y=-0.2, angular_z=0.0)
+    success = send_movement_command(linear_x=0.0, linear_y=VELOCITY_DEFAULTS.get('right', -0.2), angular_z=0.0)
 
     message = "Moving right" if success else "Failed to send movement command"
     status = "success" if success else "error"

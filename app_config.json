@@ -8,6 +8,14 @@
     "movement": "cmeresearch/cmexa/amr_control/cmd_vel",
     "move_base_goal": "cmeresearch/cmexa/amr_control/move_base_goal"
   },
+  "velocities": {
+    "forward": 0.2,
+    "backward": -0.2,
+    "left": 0.2,
+    "right": -0.2,
+    "rotate_cw": -0.5,
+    "rotate_ccw": 0.5
+  },
   "map": {
     "width": 20,
     "height": 20,

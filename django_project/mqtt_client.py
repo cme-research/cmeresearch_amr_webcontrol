@@ -259,6 +259,15 @@ def _load_app_config():
             'movement': 'amr_control/cmd_vel',
             'move_base_goal': 'amr_control/move_base_goal',
         },
+        'velocities': {
+            # Defaults for button movements
+            'forward': 0.2,   # linear_x m/s
+            'backward': -0.2, # linear_x m/s (negative)
+            'left': 0.2,      # linear_y m/s
+            'right': -0.2,    # linear_y m/s (negative)
+            'rotate_cw': -0.5,   # angular_z rad/s (negative = clockwise)
+            'rotate_ccw': 0.5,   # angular_z rad/s
+        },
         'map': {
             'width': 20,
             'height': 20,
@@ -293,6 +302,16 @@ def _load_app_config():
                     if isinstance(topics.get('move_base_goal'), str) and topics.get('move_base_goal'):
                         cfg['topics']['move_base_goal'] = topics['move_base_goal']
 
+                # Velocities configuration (optional)
+                vels = data.get('velocities', {})
+                if isinstance(vels, dict):
+                    for key in list(cfg['velocities'].keys()):
+                        if key in vels:
+                            try:
+                                cfg['velocities'][key] = float(vels[key])
+                            except (ValueError, TypeError):
+                                pass
+
                 mp = data.get('map', {})
                 if isinstance(mp, dict):
                     for key in ['width', 'height', 'resolution', 'origin_x', 'origin_y']:
@@ -322,6 +341,9 @@ SUBSCRIBE_TOPIC = _app_conf['mqtt'].get('subscribe_topic', SUBSCRIBE_TOPIC)
 # Apply topics config
 MOVEMENT_TOPIC = _app_conf['topics']['movement']
 MOVE_BASE_GOAL_TOPIC = _app_conf['topics']['move_base_goal']
+
+# Expose velocity defaults
+VELOCITY_DEFAULTS = _app_conf.get('velocities', {})
 
 # Apply map config (override defaults defined above)
 map_conf = _app_conf['map']
