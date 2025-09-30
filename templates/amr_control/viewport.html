@@ -418,11 +418,15 @@
                 movementForm.addEventListener('submit', function(event) {
                     event.preventDefault(); // Prevent default form submission
 
-                    // Get the clicked button value
-                    const buttonType = document.activeElement.value;
+                    // Determine which submit button triggered the event
+                    const submitter = event.submitter || document.activeElement;
+                    const buttonType = submitter && submitter.value ? submitter.value : null;
 
-                    // Create form data
+                    // Create form data and ensure the clicked button's value is included
                     const formData = new FormData(movementForm);
+                    if (buttonType && !formData.has('button_type')) {
+                        formData.append('button_type', buttonType);
+                    }
 
                     // Submit form via AJAX
                     fetch('{% url "handle_button" %}', {
