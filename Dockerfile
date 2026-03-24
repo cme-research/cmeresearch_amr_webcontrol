@@ -11,8 +11,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends mosquitto mosquitto-clients \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./configs/mosquitto.conf /etc/mosquitto/mosquitto.conf
-
+#COPY ./configs/mosquitto.conf /etc/mosquitto/mosquitto.conf
+COPY ./configs/bridge.conf /etc/mosquitto/mosquitto.conf
 # Set work directory
 WORKDIR /app
 
