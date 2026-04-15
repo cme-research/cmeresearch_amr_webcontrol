@@ -425,6 +425,28 @@ def map_image(request):
         return HttpResponse(status=404)
 
 
+def docker_logs_stream(request):
+    """Stream Docker container logs to the frontend using SSE."""
+    container = request.GET.get('container', 'cmexaiii-robot')
+    tail = request.GET.get('tail', '100')
+
+    def event_stream():
+        try:
+            proc = subprocess.Popen(
+                ['docker', 'logs', '-f', '--tail', tail, container],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            for line in proc.stdout:
+                escaped = json.dumps(line.rstrip('\n'))
+                yield f"data: {escaped}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps(f'Error: {e}')}\n\n"
+
+    return StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+
+
 def mqtt_stream_view(request):
     """Stream MQTT messages to the frontend using SSE."""
 

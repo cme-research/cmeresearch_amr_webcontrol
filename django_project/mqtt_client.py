@@ -4,6 +4,8 @@ import json
 import math
 import random
 import os
+import threading
+import time
 from pathlib import Path
 
 # An in-memory message queue to store MQTT messages
@@ -226,7 +228,7 @@ def on_message(client, userdata, msg):
 
 
 # Set up the MQTT client
-mqtt_client = mqtt.Client()
+mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
 mqtt_client.on_connect = on_connect
 mqtt_client.on_disconnect = on_disconnect
 mqtt_client.on_message = on_message
@@ -356,11 +358,27 @@ map_data['origin_y'] = map_conf.get('origin_y', map_data['origin_y'])
 if map_conf.get('obstacles'):
     map_data['obstacles'] = map_conf['obstacles']
 
+def _connect_with_retry():
+    """Try to connect to the MQTT broker in the background, retrying on failure."""
+    retry_delay = 5
+    max_retry_delay = int(os.getenv('MQTT_MAX_RETRY_DELAY', '60'))
+    while True:
+        try:
+            print(f"Connecting to MQTT broker {broker_url}:{broker_port} ...")
+            mqtt_client.connect(broker_url, broker_port, 60)
+            mqtt_client.loop_start()
+            print("MQTT connection initiated.")
+            return
+        except (ConnectionRefusedError, OSError) as e:
+            print(f"MQTT broker not available ({e}). Retrying in {retry_delay}s ...")
+            time.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, max_retry_delay)
+
+
 # Avoid auto-connecting only when explicitly disabled via env
 _disable_flag = os.getenv('DISABLE_MQTT')
 if not (_disable_flag and _disable_flag.lower() in ('1', 'true', 'yes')):
-    print(f"Connecting to MQTT broker {broker_url}:{broker_port} ...")
-    mqtt_client.connect(broker_url, broker_port, 60)
-    mqtt_client.loop_start()  # Non-blocking loop
+    _mqtt_thread = threading.Thread(target=_connect_with_retry, daemon=True)
+    _mqtt_thread.start()
 else:
     print("MQTT auto-connect disabled (DISABLE_MQTT set).")

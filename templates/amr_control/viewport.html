@@ -322,6 +322,26 @@
                 </div>
             </div>
 
+            <!-- Docker Logs Panel -->
+            <div class="col-md-12 mt-4">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-terminal me-2"></i>Robot Container Logs</span>
+                        <div>
+                            <button id="logs-toggle" class="btn btn-sm btn-outline-light">
+                                <i class="fas fa-play"></i> Start
+                            </button>
+                            <button id="logs-clear" class="btn btn-sm btn-outline-light ms-1">
+                                <i class="fas fa-trash"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <pre id="docker-logs" style="height: 300px; overflow-y: auto; margin: 0; padding: 10px; background-color: #1e1e1e; color: #d4d4d4; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word;"></pre>
+                    </div>
+                </div>
+            </div>
+
             <!-- Pose Management Panel -->
             <div class="col-md-12 mt-4">
                 <div class="card">
@@ -713,6 +733,48 @@
 
         // Add event listener to the refresh button
         refreshMapButton.addEventListener('click', fetchMapData);
+
+        // Docker logs streaming
+        const logsContainer = document.getElementById('docker-logs');
+        const logsToggle = document.getElementById('logs-toggle');
+        const logsClear = document.getElementById('logs-clear');
+        let logsSource = null;
+        let logsRunning = false;
+        const MAX_LOG_LINES = 500;
+
+        function startLogs() {
+            if (logsSource) logsSource.close();
+            logsSource = new EventSource('/docker_logs/?container=cmexaiii-robot&tail=50');
+            logsSource.onmessage = function(event) {
+                const line = JSON.parse(event.data);
+                logsContainer.textContent += line + '\n';
+                // Limit lines
+                const lines = logsContainer.textContent.split('\n');
+                if (lines.length > MAX_LOG_LINES) {
+                    logsContainer.textContent = lines.slice(-MAX_LOG_LINES).join('\n');
+                }
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+            };
+            logsSource.onerror = function() {
+                logsContainer.textContent += '[Connection lost. Retrying...]\n';
+            };
+            logsRunning = true;
+            logsToggle.innerHTML = '<i class="fas fa-stop"></i> Stop';
+        }
+
+        function stopLogs() {
+            if (logsSource) { logsSource.close(); logsSource = null; }
+            logsRunning = false;
+            logsToggle.innerHTML = '<i class="fas fa-play"></i> Start';
+        }
+
+        logsToggle.addEventListener('click', function() {
+            if (logsRunning) stopLogs(); else startLogs();
+        });
+
+        logsClear.addEventListener('click', function() {
+            logsContainer.textContent = '';
+        });
 
         // Helper to read CSRF token from cookie
         function getCookie(name) {

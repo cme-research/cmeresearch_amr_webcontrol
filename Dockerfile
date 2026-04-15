@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Install Mosquitto MQTT broker and clients
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends mosquitto mosquitto-clients \
+    && apt-get install -y --no-install-recommends mosquitto mosquitto-clients docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 #COPY ./configs/mosquitto.conf /etc/mosquitto/mosquitto.conf
