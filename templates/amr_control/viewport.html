@@ -63,6 +63,18 @@
         .status-disconnected {
             background-color: #dc3545;
         }
+        .state-badge {
+            font-size: 0.85rem;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+        .state-unknown       { background-color: #6c757d; color: #fff; }
+        .state-initializing  { background-color: #ffc107; color: #212529; }
+        .state-idle          { background-color: #0d6efd; color: #fff; }
+        .state-moving        { background-color: #198754; color: #fff; }
+        .state-emergency_stop { background-color: #dc3545; color: #fff; }
     </style>
 </head>
 <body>
@@ -73,6 +85,7 @@
                 <i class="fas fa-robot me-2"></i>AMR Control Dashboard
             </a>
             <div class="ms-auto d-flex align-items-center">
+                <span id="robot-state-badge" class="state-badge state-unknown me-3">unknown</span>
                 <span class="text-light me-2">MQTT:</span>
                 <span class="status-indicator status-connected" id="connection-status"></span>
                 <span class="text-light" id="connection-text">Connected</span>
@@ -212,7 +225,7 @@
                         <i class="fas fa-gamepad me-2"></i>Robot Control
                     </div>
                     <div class="card-body">
-                        <form method="post" action="{% url 'handle_button' %}">
+                        <form method="post" action="{% url 'handle_button' %}" id="mission-form">
                             {% csrf_token %}
                             <div class="row">
                                 <div class="col-md-6">
@@ -499,6 +512,57 @@
             }
         });
 
+        // State badge
+        const robotStateBadge = document.getElementById('robot-state-badge');
+        const STATE_LABELS = {
+            'unknown':       'Unknown',
+            'initializing':  'Initializing',
+            'idle':          'Idle',
+            'moving':        'Moving',
+            'emergency_stop': 'EMERGENCY STOP',
+        };
+        function updateStateBadge(state) {
+            const label = STATE_LABELS[state] || state;
+            robotStateBadge.textContent = label;
+            robotStateBadge.className = 'state-badge state-' + (state || 'unknown');
+        }
+
+        // Mission form — AJAX submission
+        const missionForm = document.getElementById('mission-form');
+        if (missionForm) {
+            missionForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(missionForm);
+                const clickedButton = e.submitter;
+                if (clickedButton) {
+                    formData.set(clickedButton.name, clickedButton.value);
+                }
+                fetch(missionForm.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                .then(r => r.json())
+                .then(data => {
+                    const toastContainer = document.querySelector('.toast-container');
+                    const toastEl = document.createElement('div');
+                    toastEl.className = `toast`;
+                    toastEl.setAttribute('role', 'alert');
+                    toastEl.setAttribute('data-bs-autohide', 'true');
+                    toastEl.setAttribute('data-bs-delay', '4000');
+                    toastEl.innerHTML = `
+                        <div class="toast-header ${data.status === 'success' ? 'bg-success' : 'bg-danger'} text-white">
+                            <strong class="me-auto">${data.status === 'success' ? 'Success' : 'Error'}</strong>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+                        </div>
+                        <div class="toast-body">${data.message}</div>`;
+                    toastContainer.appendChild(toastEl);
+                    new bootstrap.Toast(toastEl).show();
+                })
+                .catch(err => console.error('Mission form error:', err));
+            });
+        }
+
         // Get DOM elements
         const headerTime = document.getElementById('header-time');
         const linearX = document.getElementById('linear-x');
@@ -550,6 +614,11 @@
             } else {
                 connectionStatus.className = "status-indicator status-disconnected";
                 connectionText.textContent = "Disconnected";
+            }
+
+            // Always update the state badge if present
+            if (data_json.robot_state !== undefined) {
+                updateStateBadge(data_json.robot_state);
             }
 
             // If this is just a status update, don't update the data fields

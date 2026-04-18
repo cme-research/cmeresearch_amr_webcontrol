@@ -18,11 +18,19 @@ is_connected = False
 MOVEMENT_TOPIC = "amr_control/cmd_vel"
 MOVE_BASE_GOAL_TOPIC = "amr_control/move_base_goal"
 SUBSCRIBE_TOPIC = "fake_odom"
+ROBOT_STATE_TOPIC = "robot_state"
+ROBOT_CMD_TOPIC = "robot_cmd"
 
 # Global variable to store the latest robot pose
 current_pose = {
     "position": {"x": 0.0, "y": 0.0},
     "orientation": {"z": 0.0}
+}
+
+# Global variable to store the latest robot state from the state machine
+current_robot_state = {
+    "state": "unknown",
+    "timestamp": None,
 }
 
 # Global variable to store the 2D SLAM map data
@@ -48,11 +56,11 @@ for _ in range(20):
 def on_connect(client, userdata, flags, rc):
     global is_connected
     print("Connected with result code " + str(rc))
-    # Subscribe to the desired MQTT topic
     try:
         client.subscribe(SUBSCRIBE_TOPIC)
+        client.subscribe(ROBOT_STATE_TOPIC)
     except Exception as e:
-        print(f"Failed to subscribe to topic {SUBSCRIBE_TOPIC}: {e}")
+        print(f"Failed to subscribe: {e}")
     is_connected = True
 
 
@@ -165,6 +173,47 @@ def get_current_pose():
     return current_pose
 
 
+def get_current_robot_state():
+    return current_robot_state
+
+
+def send_robot_command(cmd: str) -> bool:
+    if not is_connected:
+        print("Cannot send robot command: MQTT client not connected")
+        return False
+    try:
+        payload = json.dumps({"data": cmd})
+        result = mqtt_client.publish(ROBOT_CMD_TOPIC, payload)
+        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+            print(f"Robot command sent: {cmd}")
+            return True
+        print(f"Failed to send robot command: {result}")
+        return False
+    except Exception as e:
+        print(f"Error sending robot command: {e}")
+        return False
+
+
+def on_robot_state_message(client, userdata, msg):
+    global current_robot_state
+    try:
+        data = json.loads(msg.payload.decode())
+        state = data.get("state", "unknown")
+        stamp = data.get("header", {}).get("stamp", {})
+        current_robot_state = {
+            "state": state,
+            "timestamp": stamp,
+        }
+        message_queue.put({
+            "type": "robot_state",
+            "robot_state": state,
+            "robot_state_stamp": stamp,
+        })
+        print(f"Robot state: {state}")
+    except json.JSONDecodeError:
+        print("Invalid JSON in robot state message")
+
+
 def get_map_data():
     """
     Get the current 2D SLAM map data.
@@ -232,6 +281,7 @@ mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
 mqtt_client.on_connect = on_connect
 mqtt_client.on_disconnect = on_disconnect
 mqtt_client.on_message = on_message
+mqtt_client.message_callback_add(ROBOT_STATE_TOPIC, on_robot_state_message)
 
 # Unified application configuration loader.
 # Precedence for config file path:
@@ -260,6 +310,8 @@ def _load_app_config():
         'topics': {
             'movement': 'amr_control/cmd_vel',
             'move_base_goal': 'amr_control/move_base_goal',
+            'robot_state': 'robot_state',
+            'robot_cmd': 'robot_cmd',
         },
         'velocities': {
             # Defaults for button movements
@@ -303,6 +355,10 @@ def _load_app_config():
                         cfg['topics']['movement'] = topics['movement']
                     if isinstance(topics.get('move_base_goal'), str) and topics.get('move_base_goal'):
                         cfg['topics']['move_base_goal'] = topics['move_base_goal']
+                    if isinstance(topics.get('robot_state'), str) and topics.get('robot_state'):
+                        cfg['topics']['robot_state'] = topics['robot_state']
+                    if isinstance(topics.get('robot_cmd'), str) and topics.get('robot_cmd'):
+                        cfg['topics']['robot_cmd'] = topics['robot_cmd']
 
                 # Velocities configuration (optional)
                 vels = data.get('velocities', {})
@@ -343,6 +399,8 @@ SUBSCRIBE_TOPIC = _app_conf['mqtt'].get('subscribe_topic', SUBSCRIBE_TOPIC)
 # Apply topics config
 MOVEMENT_TOPIC = _app_conf['topics']['movement']
 MOVE_BASE_GOAL_TOPIC = _app_conf['topics']['move_base_goal']
+ROBOT_STATE_TOPIC = _app_conf['topics']['robot_state']
+ROBOT_CMD_TOPIC = _app_conf['topics']['robot_cmd']
 
 # Expose velocity defaults
 VELOCITY_DEFAULTS = _app_conf.get('velocities', {})

@@ -19,7 +19,8 @@ def is_ajax(request):
 
 from django_project.mqtt_client import (
     message_queue, get_connection_status, send_movement_command,
-    send_move_base_goal, get_current_pose, get_map_data, mqtt_client, VELOCITY_DEFAULTS
+    send_move_base_goal, get_current_pose, get_map_data, mqtt_client,
+    VELOCITY_DEFAULTS, send_robot_command, get_current_robot_state,
 )
 from .models import RobotPose
 import json
@@ -76,18 +77,30 @@ def handle_button(request):
 
 
 def button1_action(request):
-    """Python method for Button 1 functionality."""
-    # Perform some logic here
-    print("Button 1 called!")
-    messages.success(request, "Button 1 executed successfully!")
+    """Send start_mission command to the robot state machine via MQTT."""
+    success = send_robot_command("start_mission")
+    message = "Mission started" if success else "Failed to send start_mission command"
+    status = "success" if success else "error"
+    if is_ajax(request):
+        return JsonResponse({'status': status, 'message': message})
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
     return redirect('button_page')
 
 
 def button2_action(request):
-    """Python method for Button 2 functionality."""
-    # Perform some logic here
-    print("Button 2 called!")
-    messages.success(request, "Button 2 executed successfully!")
+    """Send emergency_stop command to the robot state machine via MQTT."""
+    success = send_robot_command("emergency_stop")
+    message = "Emergency stop sent" if success else "Failed to send emergency_stop command"
+    status = "success" if success else "error"
+    if is_ajax(request):
+        return JsonResponse({'status': status, 'message': message})
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
     return redirect('button_page')
 
 
@@ -460,10 +473,10 @@ def mqtt_stream_view(request):
 
             # Send a message if there's one in the queue
             if not message_queue.empty():
-                message = message_queue.get()  # Get the latest message
-                # Add connection status to the message
+                message = message_queue.get()
                 message['mqtt_connected'] = current_status
-                yield f"data: {json.dumps(message)}\n\n"  # SSE format
+                message.setdefault('robot_state', get_current_robot_state()['state'])
+                yield f"data: {json.dumps(message)}\n\n"
                 current_size = message_queue.qsize()
                 print(f"Current size: {current_size}")
                 last_status = current_status
@@ -472,7 +485,8 @@ def mqtt_stream_view(request):
             elif current_status != last_status or (current_time - last_status_time) > 5:
                 status_message = {
                     'mqtt_connected': current_status,
-                    'status_update': True
+                    'status_update': True,
+                    'robot_state': get_current_robot_state()['state'],
                 }
                 yield f"data: {json.dumps(status_message)}\n\n"
                 last_status = current_status
