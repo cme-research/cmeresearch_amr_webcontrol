@@ -74,6 +74,7 @@
         .state-initializing  { background-color: #ffc107; color: #212529; }
         .state-idle          { background-color: #0d6efd; color: #fff; }
         .state-moving        { background-color: #198754; color: #fff; }
+        .state-driver_error   { background-color: #fd7e14; color: #fff; }
         .state-emergency_stop { background-color: #dc3545; color: #fff; }
     </style>
 </head>
@@ -521,7 +522,8 @@
         const robotStateBadge = document.getElementById('robot-state-badge');
         const STATE_LABELS = {
             'unknown':       'Unknown',
-            'initializing':  'Initializing',
+            'initializing':  'Initializing…',
+            'driver_error':  'DRIVER ERROR',
             'idle':          'Idle',
             'moving':        'Moving',
             'emergency_stop': 'EMERGENCY STOP',
