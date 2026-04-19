@@ -228,14 +228,19 @@
                         <form method="post" action="{% url 'handle_button' %}" id="mission-form">
                             {% csrf_token %}
                             <div class="row">
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <button type="submit" name="button_type" value="button1" class="btn btn-primary action-btn">
                                         <i class="fas fa-play me-2"></i>Start Mission
                                     </button>
                                 </div>
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <button type="submit" name="button_type" value="button2" class="btn btn-danger action-btn">
                                         <i class="fas fa-stop me-2"></i>Emergency Stop
+                                    </button>
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="submit" name="button_type" value="button3" id="reset-btn" class="btn btn-warning action-btn" disabled>
+                                        <i class="fas fa-undo me-2"></i>Reset / Clear E-Stop
                                     </button>
                                 </div>
                             </div>
@@ -521,10 +526,14 @@
             'moving':        'Moving',
             'emergency_stop': 'EMERGENCY STOP',
         };
+        const resetBtn = document.getElementById('reset-btn');
         function updateStateBadge(state) {
             const label = STATE_LABELS[state] || state;
             robotStateBadge.textContent = label;
             robotStateBadge.className = 'state-badge state-' + (state || 'unknown');
+            if (resetBtn) {
+                resetBtn.disabled = (state !== 'emergency_stop');
+            }
         }
 
         // Mission form — AJAX submission

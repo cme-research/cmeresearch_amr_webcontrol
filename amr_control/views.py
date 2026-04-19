@@ -44,6 +44,8 @@ def handle_button(request):
             return button1_action(request)
         elif button_type == 'button2':
             return button2_action(request)
+        elif button_type == 'button3':
+            return button3_action(request)
 
         # Movement control buttons
         elif button_type == 'move_forward':
@@ -94,6 +96,20 @@ def button2_action(request):
     """Send emergency_stop command to the robot state machine via MQTT."""
     success = send_robot_command("emergency_stop")
     message = "Emergency stop sent" if success else "Failed to send emergency_stop command"
+    status = "success" if success else "error"
+    if is_ajax(request):
+        return JsonResponse({'status': status, 'message': message})
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+    return redirect('button_page')
+
+
+def button3_action(request):
+    """Send reset command to clear emergency stop and return to idle via MQTT."""
+    success = send_robot_command("reset")
+    message = "Reset sent" if success else "Failed to send reset command"
     status = "success" if success else "error"
     if is_ajax(request):
         return JsonResponse({'status': status, 'message': message})
