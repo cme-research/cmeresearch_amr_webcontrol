@@ -490,8 +490,11 @@ def mqtt_stream_view(request):
             # Send a message if there's one in the queue
             if not message_queue.empty():
                 message = message_queue.get()
+                rs = get_current_robot_state()
                 message['mqtt_connected'] = current_status
-                message.setdefault('robot_state', get_current_robot_state()['state'])
+                message.setdefault('robot_state', rs['state'])
+                message.setdefault('driver_names', rs.get('driver_names', []))
+                message.setdefault('driver_states', rs.get('driver_states', []))
                 yield f"data: {json.dumps(message)}\n\n"
                 current_size = message_queue.qsize()
                 print(f"Current size: {current_size}")
@@ -499,10 +502,13 @@ def mqtt_stream_view(request):
                 last_status_time = current_time
             # Send a status update every 5 seconds if status changed or no message was sent in the last 5 seconds
             elif current_status != last_status or (current_time - last_status_time) > 5:
+                rs = get_current_robot_state()
                 status_message = {
                     'mqtt_connected': current_status,
                     'status_update': True,
-                    'robot_state': get_current_robot_state()['state'],
+                    'robot_state': rs['state'],
+                    'driver_names': rs.get('driver_names', []),
+                    'driver_states': rs.get('driver_states', []),
                 }
                 yield f"data: {json.dumps(status_message)}\n\n"
                 last_status = current_status

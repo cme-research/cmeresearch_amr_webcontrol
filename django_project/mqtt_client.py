@@ -31,6 +31,8 @@ current_pose = {
 current_robot_state = {
     "state": "unknown",
     "timestamp": None,
+    "driver_names": [],
+    "driver_states": [],
 }
 
 # Global variable to store the 2D SLAM map data
@@ -200,16 +202,22 @@ def on_robot_state_message(client, userdata, msg):
         data = json.loads(msg.payload.decode())
         state = data.get("state", "unknown")
         stamp = data.get("header", {}).get("stamp", {})
+        driver_names = data.get("driver_names", [])
+        driver_states = data.get("driver_states", [])
         current_robot_state = {
             "state": state,
             "timestamp": stamp,
+            "driver_names": driver_names,
+            "driver_states": driver_states,
         }
         message_queue.put({
             "type": "robot_state",
             "robot_state": state,
             "robot_state_stamp": stamp,
+            "driver_names": driver_names,
+            "driver_states": driver_states,
         })
-        print(f"Robot state: {state}")
+        print(f"Robot state: {state}, drivers: {list(zip(driver_names, driver_states))}")
     except json.JSONDecodeError:
         print("Invalid JSON in robot state message")
 

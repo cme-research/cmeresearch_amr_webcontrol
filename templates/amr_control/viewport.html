@@ -76,6 +76,11 @@
         .state-moving        { background-color: #198754; color: #fff; }
         .state-driver_error   { background-color: #fd7e14; color: #fff; }
         .state-emergency_stop { background-color: #dc3545; color: #fff; }
+        .motor-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
+        .motor-ok    { background-color: #198754; color: #fff; }
+        .motor-warn  { background-color: #dc3545; color: #fff; }
+        .motor-init  { background-color: #ffc107; color: #212529; }
+        .motor-idle  { background-color: #6c757d; color: #fff; }
     </style>
 </head>
 <body>
@@ -246,6 +251,26 @@
                                 </div>
                             </div>
                         </form>
+
+                        <!-- Motor status grid (shown when state machine has driver info) -->
+                        <div id="motor-status-panel" class="mt-3" style="display:none;">
+                            <hr class="my-2">
+                            <div class="d-flex align-items-center mb-2">
+                                <small class="text-muted me-2">Motor status:</small>
+                                <div id="motor-status-grid" class="d-flex gap-2 flex-wrap"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Emergency Stop Banner (hidden by default) -->
+            <div id="estop-banner" class="col-md-12 mt-2" style="display:none;">
+                <div class="alert alert-danger d-flex align-items-center mb-0 py-2" role="alert">
+                    <i class="fas fa-exclamation-triangle fa-lg me-3"></i>
+                    <div>
+                        <strong>EMERGENCY STOP ACTIVE</strong>
+                        <span id="estop-reason" class="ms-2 text-danger-emphasis"></span>
                     </div>
                 </div>
             </div>
@@ -529,13 +554,56 @@
             'emergency_stop': 'EMERGENCY STOP',
         };
         const resetBtn = document.getElementById('reset-btn');
-        function updateStateBadge(state) {
+        const estopBanner = document.getElementById('estop-banner');
+        const estopReason = document.getElementById('estop-reason');
+        const motorPanel = document.getElementById('motor-status-panel');
+        const motorGrid = document.getElementById('motor-status-grid');
+
+        const MOTOR_STATE_LABEL = {
+            'initialized': 'OK',
+            'idle': 'Idle',
+            'low_voltage': 'LOW VOLT',
+            'error': 'ERROR',
+            '': '…',
+        };
+
+        function motorClass(s) {
+            if (s === 'initialized') return 'motor-ok';
+            if (s === 'idle') return 'motor-idle';
+            if (s === 'low_voltage' || s === 'error') return 'motor-warn';
+            return 'motor-init';
+        }
+
+        function updateMotorGrid(names, states) {
+            if (!names || names.length === 0) { motorPanel.style.display = 'none'; return; }
+            motorPanel.style.display = '';
+            motorGrid.innerHTML = '';
+            names.forEach(function(name, i) {
+                const st = states[i] || '';
+                const span = document.createElement('span');
+                span.className = 'motor-badge ' + motorClass(st);
+                span.textContent = name.replace('_', ' ') + ': ' + (MOTOR_STATE_LABEL[st] || st);
+                motorGrid.appendChild(span);
+            });
+            // Show low-voltage reason in e-stop banner if any motor is in low_voltage
+            const lowVoltMotors = names.filter((_, i) => states[i] === 'low_voltage');
+            if (lowVoltMotors.length > 0 && estopReason) {
+                estopReason.textContent = '— Low voltage on: ' + lowVoltMotors.map(n => n.replace('_', ' ')).join(', ');
+            } else if (estopReason) {
+                estopReason.textContent = '';
+            }
+        }
+
+        function updateStateBadge(state, driverNames, driverStates) {
             const label = STATE_LABELS[state] || state;
             robotStateBadge.textContent = label;
             robotStateBadge.className = 'state-badge state-' + (state || 'unknown');
             if (resetBtn) {
                 resetBtn.disabled = (state !== 'emergency_stop');
             }
+            const isEstop = (state === 'emergency_stop');
+            if (estopBanner) estopBanner.style.display = isEstop ? '' : 'none';
+            updateMotorGrid(driverNames || [], driverStates || []);
         }
 
         // Mission form — AJAX submission
@@ -629,7 +697,7 @@
 
             // Always update the state badge if present
             if (data_json.robot_state !== undefined) {
-                updateStateBadge(data_json.robot_state);
+                updateStateBadge(data_json.robot_state, data_json.driver_names, data_json.driver_states);
             }
 
             // If this is just a status update, don't update the data fields
