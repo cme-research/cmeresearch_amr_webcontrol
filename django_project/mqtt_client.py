@@ -94,15 +94,13 @@ def send_movement_command(linear_x=0.0, linear_y=0.0, angular_z=0.0):
         return False
 
     command = {
-        "linear": {
-            "x": linear_x,
-            "y": linear_y,
-            "z": 0.0
+        "header": {
+            "frame_id": "base_link",
+            "stamp": {"sec": 0, "nanosec": 0}
         },
-        "angular": {
-            "x": 0.0,
-            "y": 0.0,
-            "z": angular_z
+        "twist": {
+            "linear":  {"x": linear_x, "y": linear_y, "z": 0.0},
+            "angular": {"x": 0.0, "y": 0.0, "z": angular_z}
         }
     }
 
