@@ -275,6 +275,65 @@
                 </div>
             </div>
 
+            <!-- Robot Telemetry Row -->
+            <div class="col-md-12 mt-3">
+                <div class="row g-3">
+
+                    <!-- Navigation Status -->
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-header bg-secondary text-white py-1">
+                                <i class="fas fa-route me-1"></i> Navigation
+                            </div>
+                            <div class="card-body py-2 text-center">
+                                <span id="nav-status-badge" class="state-badge state-unknown">idle</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Battery / Voltage -->
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-header bg-secondary text-white py-1">
+                                <i class="fas fa-battery-three-quarters me-1"></i> Motor Voltage
+                            </div>
+                            <div class="card-body py-2">
+                                <div id="voltage-bars"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Stats -->
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-header bg-secondary text-white py-1">
+                                <i class="fas fa-microchip me-1"></i> System (Pi)
+                            </div>
+                            <div class="card-body py-2">
+                                <div id="system-stats-panel">
+                                    <small class="text-muted">Waiting for data…</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Motor Velocity -->
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-header bg-secondary text-white py-1">
+                                <i class="fas fa-tachometer-alt me-1"></i> Motor Velocity
+                            </div>
+                            <div class="card-body py-2">
+                                <div id="motor-velocity-panel">
+                                    <small class="text-muted">Waiting for data…</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
             <!-- Movement Control Panel -->
             <div class="col-md-12 mt-4">
                 <div class="card">
@@ -677,6 +736,90 @@
         setInterval(updateLocalTime, 1000);
         updateLocalTime();
 
+        // --- Telemetry panel updaters ---
+
+        const navStatusBadge = document.getElementById('nav-status-badge');
+        const NAV_STATUS_STYLES = {
+            'idle':       ['state-idle',           'Idle'],
+            'navigating': ['state-moving',         'Navigating'],
+            'canceling':  ['state-initializing',   'Canceling\u2026'],
+            'canceled':   ['state-unknown',        'Canceled'],
+            'aborted':    ['state-emergency_stop', 'Aborted'],
+            'succeeded':  ['state-moving',         'Succeeded'],
+        };
+
+        function updateNavStatus(status) {
+            if (!navStatusBadge || !status) return;
+            const entry = NAV_STATUS_STYLES[status] || ['state-unknown', status];
+            navStatusBadge.className = 'state-badge ' + entry[0];
+            navStatusBadge.textContent = entry[1];
+        }
+
+        const systemStatsPanel = document.getElementById('system-stats-panel');
+
+        function updateSystemStats(statsRaw) {
+            if (!systemStatsPanel || !statsRaw) return;
+            let s;
+            try { s = typeof statsRaw === 'string' ? JSON.parse(statsRaw) : statsRaw; }
+            catch (e) { return; }
+            const cpu  = (s.cpu_percent    || 0).toFixed(1);
+            const mem  = (s.memory_percent || 0).toFixed(1);
+            const temp = (s.temperature_c  || 0).toFixed(1);
+            const memUsedGb  = ((s.memory_used_mb  || 0) / 1024).toFixed(1);
+            const memTotalGb = ((s.memory_total_mb || 0) / 1024).toFixed(1);
+            function barColor(pct, warnAt, critAt) {
+                return pct > critAt ? 'bg-danger' : pct > warnAt ? 'bg-warning' : 'bg-success';
+            }
+            const tempPct = Math.min((s.temperature_c || 0) / 100 * 100, 100);
+            systemStatsPanel.innerHTML =
+                `<div class="mb-1"><small>CPU: <strong>${cpu}%</strong></small>
+                    <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.cpu_percent,60,80)}" style="width:${Math.min(s.cpu_percent||0,100)}%"></div></div></div>
+                <div class="mb-1"><small>Mem: <strong>${memUsedGb}/${memTotalGb}\u00a0GB</strong></small>
+                    <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.memory_percent,60,80)}" style="width:${Math.min(s.memory_percent||0,100)}%"></div></div></div>
+                <div><small>Temp: <strong>${temp}\u00b0C</strong></small>
+                    <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.temperature_c,60,75)}" style="width:${tempPct}%"></div></div></div>`;
+        }
+
+        const voltageBars = document.getElementById('voltage-bars');
+        const motorVelocityPanel = document.getElementById('motor-velocity-panel');
+        const VOLTAGE_NOMINAL = 24.0;
+
+        function voltageBarColor(v) {
+            return v < 18.0 ? 'bg-danger' : v < 20.0 ? 'bg-warning' : 'bg-success';
+        }
+
+        function updateVoltage(motorFeedback) {
+            if (!voltageBars || !motorFeedback) return;
+            const wheels = Object.keys(motorFeedback);
+            if (wheels.length === 0) { voltageBars.innerHTML = '<small class="text-muted">No data</small>'; return; }
+            let html = '';
+            wheels.forEach(function(wheel) {
+                const fb = motorFeedback[wheel];
+                const v = parseFloat(fb.input_voltage || 0);
+                const pct = Math.min(v / VOLTAGE_NOMINAL * 100, 100);
+                html += `<div class="mb-1"><small>${wheel.replace(/_/g,' ')}: <strong>${v.toFixed(1)}\u00a0V</strong></small>
+                    <div class="progress" style="height:6px;"><div class="progress-bar ${voltageBarColor(v)}" style="width:${pct}%"></div></div></div>`;
+            });
+            voltageBars.innerHTML = html;
+        }
+
+        function updateMotorVelocity(motorFeedback) {
+            if (!motorVelocityPanel || !motorFeedback) return;
+            const wheels = Object.keys(motorFeedback);
+            if (wheels.length === 0) { motorVelocityPanel.innerHTML = '<small class="text-muted">No data</small>'; return; }
+            const MAX_VEL = 2000;
+            let html = '';
+            wheels.forEach(function(wheel) {
+                const fb = motorFeedback[wheel];
+                const vel = parseFloat(fb.current_velocity || 0);
+                const pct = Math.min(Math.abs(vel) / MAX_VEL * 100, 100);
+                const color = vel !== 0 ? 'bg-primary' : 'bg-secondary';
+                html += `<div class="mb-1"><small>${wheel.replace(/_/g,' ')}: <strong>${vel.toFixed(0)}</strong></small>
+                    <div class="progress" style="height:6px;"><div class="progress-bar ${color}" style="width:${pct}%"></div></div></div>`;
+            });
+            motorVelocityPanel.innerHTML = html;
+        }
+
         // Connect to SSE endpoint
         const eventSource = new EventSource("/mqtt_stream/");
 
@@ -698,6 +841,14 @@
             // Always update the state badge if present
             if (data_json.robot_state !== undefined) {
                 updateStateBadge(data_json.robot_state, data_json.driver_names, data_json.driver_states);
+            }
+
+            // Telemetry panels — update on every message (including status_update)
+            if (data_json.nav_status !== undefined) updateNavStatus(data_json.nav_status);
+            if (data_json.system_stats !== undefined) updateSystemStats(data_json.system_stats);
+            if (data_json.motor_feedback !== undefined) {
+                updateVoltage(data_json.motor_feedback);
+                updateMotorVelocity(data_json.motor_feedback);
             }
 
             // If this is just a status update, don't update the data fields

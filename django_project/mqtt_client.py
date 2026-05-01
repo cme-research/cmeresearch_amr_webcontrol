@@ -20,11 +20,25 @@ MOVE_BASE_GOAL_TOPIC = "amr_control/move_base_goal"
 SUBSCRIBE_TOPIC = "fake_odom"
 ROBOT_STATE_TOPIC = "robot_state"
 ROBOT_CMD_TOPIC = "robot_cmd"
+NAV_STATUS_TOPIC = "navigation/status"
+SYSTEM_STATS_TOPIC = "system/stats"
+MOTOR_FEEDBACK_TOPICS = {
+    "front_left": "base/front_left/feedback",
+    "front_right": "base/front_right/feedback",
+    "rear_left": "base/rear_left/feedback",
+    "rear_right": "base/rear_right/feedback",
+}
 
 # Global variable to store the latest robot pose
 current_pose = {
     "position": {"x": 0.0, "y": 0.0},
     "orientation": {"z": 0.0}
+}
+
+current_nav_status = "idle"
+current_system_stats = {}
+current_motor_feedback = {
+    "front_left": {}, "front_right": {}, "rear_left": {}, "rear_right": {}
 }
 
 # Global variable to store the latest robot state from the state machine
@@ -61,6 +75,10 @@ def on_connect(client, userdata, flags, rc):
     try:
         client.subscribe(SUBSCRIBE_TOPIC)
         client.subscribe(ROBOT_STATE_TOPIC)
+        client.subscribe(NAV_STATUS_TOPIC)
+        client.subscribe(SYSTEM_STATS_TOPIC)
+        for topic in MOTOR_FEEDBACK_TOPICS.values():
+            client.subscribe(topic)
     except Exception as e:
         print(f"Failed to subscribe: {e}")
     is_connected = True
@@ -220,6 +238,52 @@ def on_robot_state_message(client, userdata, msg):
         print("Invalid JSON in robot state message")
 
 
+def on_nav_status_message(client, userdata, msg):
+    global current_nav_status
+    try:
+        data = json.loads(msg.payload.decode())
+        current_nav_status = data.get("data", "idle")
+        message_queue.put({"type": "nav_status", "nav_status": current_nav_status})
+    except (json.JSONDecodeError, AttributeError):
+        current_nav_status = msg.payload.decode()
+
+
+def on_system_stats_message(client, userdata, msg):
+    global current_system_stats
+    try:
+        current_system_stats = json.loads(msg.payload.decode())
+        message_queue.put({"type": "system_stats", "system_stats": current_system_stats})
+    except json.JSONDecodeError:
+        pass
+
+
+def _make_motor_feedback_callback(wheel_name):
+    def callback(client, userdata, msg):
+        try:
+            data = json.loads(msg.payload.decode())
+            current_motor_feedback[wheel_name] = {
+                "velocity": data.get("current_velocity", 0.0),
+                "position": data.get("current_position", 0),
+                "input_voltage": data.get("input_voltage", 0),
+                "current_consumption": data.get("current_consumption", 0),
+            }
+        except json.JSONDecodeError:
+            pass
+    return callback
+
+
+def get_nav_status():
+    return current_nav_status
+
+
+def get_system_stats():
+    return current_system_stats
+
+
+def get_motor_feedback():
+    return current_motor_feedback
+
+
 def get_map_data():
     """
     Get the current 2D SLAM map data.
@@ -288,6 +352,10 @@ mqtt_client.on_connect = on_connect
 mqtt_client.on_disconnect = on_disconnect
 mqtt_client.on_message = on_message
 mqtt_client.message_callback_add(ROBOT_STATE_TOPIC, on_robot_state_message)
+mqtt_client.message_callback_add(NAV_STATUS_TOPIC, on_nav_status_message)
+mqtt_client.message_callback_add(SYSTEM_STATS_TOPIC, on_system_stats_message)
+for _wheel, _topic in MOTOR_FEEDBACK_TOPICS.items():
+    mqtt_client.message_callback_add(_topic, _make_motor_feedback_callback(_wheel))
 
 # Unified application configuration loader.
 # Precedence for config file path:
@@ -407,6 +475,18 @@ MOVEMENT_TOPIC = _app_conf['topics']['movement']
 MOVE_BASE_GOAL_TOPIC = _app_conf['topics']['move_base_goal']
 ROBOT_STATE_TOPIC = _app_conf['topics']['robot_state']
 ROBOT_CMD_TOPIC = _app_conf['topics']['robot_cmd']
+NAV_STATUS_TOPIC = _app_conf['topics'].get('nav_status', NAV_STATUS_TOPIC)
+SYSTEM_STATS_TOPIC = _app_conf['topics'].get('system_stats', SYSTEM_STATS_TOPIC)
+_prefix = _app_conf['topics'].get('motor_feedback_prefix', 'base')
+MOTOR_FEEDBACK_TOPICS = {
+    w: f"{_prefix}/{w}/feedback" for w in ("front_left", "front_right", "rear_left", "rear_right")
+}
+# Re-register callbacks with resolved topic names
+mqtt_client.message_callback_add(ROBOT_STATE_TOPIC, on_robot_state_message)
+mqtt_client.message_callback_add(NAV_STATUS_TOPIC, on_nav_status_message)
+mqtt_client.message_callback_add(SYSTEM_STATS_TOPIC, on_system_stats_message)
+for _wheel, _topic in MOTOR_FEEDBACK_TOPICS.items():
+    mqtt_client.message_callback_add(_topic, _make_motor_feedback_callback(_wheel))
 
 # Expose velocity defaults
 VELOCITY_DEFAULTS = _app_conf.get('velocities', {})
