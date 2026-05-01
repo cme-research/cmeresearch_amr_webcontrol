@@ -1,0 +1,117 @@
+name: Docker Multi-Arch Build & Release
+
+on:
+  push:
+    branches:
+      - jazzy
+    tags:
+      - 'jazzy-v*'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  ORG: cme-research
+  IMAGE: cmeresearch_amr_webcontrol
+
+jobs:
+  build:
+    if: github.ref_type == 'branch'
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.ORG }}/${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ github.ref_name }}
+            type=sha,prefix=${{ github.ref_name }}-,format=long
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=webcontrol
+          cache-to: type=gha,mode=max,scope=webcontrol
+
+  promote:
+    if: github.ref_type == 'tag'
+    name: Promote to ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Parse distro and version from tag
+        id: ver
+        run: |
+          set -euo pipefail
+          full="${GITHUB_REF_NAME}"
+          if [[ ! "$full" =~ ^([a-z]+)-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)$ ]]; then
+            echo "::error::Tag '${full}' does not match '<distro>-v<semver>' (e.g. jazzy-v1.4.0, jazzy-v1.4.0-rc1)."
+            exit 1
+          fi
+          distro="${BASH_REMATCH[1]}"
+          v="${BASH_REMATCH[2]}"
+          echo "distro=${distro}"                        >> "$GITHUB_OUTPUT"
+          echo "v=${v}"                                  >> "$GITHUB_OUTPUT"
+          echo "minor=$(echo "${v}" | cut -d. -f1-2)"    >> "$GITHUB_OUTPUT"
+          echo "major=$(echo "${v}" | cut -d. -f1)"      >> "$GITHUB_OUTPUT"
+
+      - name: Retag <distro>-<sha> manifest as versioned release
+        env:
+          IMG:    ${{ env.REGISTRY }}/${{ env.ORG }}/${{ env.IMAGE }}
+          SHA:    ${{ github.sha }}
+          DISTRO: ${{ steps.ver.outputs.distro }}
+          V:      ${{ steps.ver.outputs.v }}
+          MIN:    ${{ steps.ver.outputs.minor }}
+          MAJ:    ${{ steps.ver.outputs.major }}
+        run: |
+          set -euo pipefail
+          src="${IMG}:${DISTRO}-${SHA}"
+          if ! docker buildx imagetools inspect "${src}" >/dev/null 2>&1; then
+            echo "::error::Source image ${src} not found. Tag a commit that has been merged to '${DISTRO}' and built by the 'build' job."
+            exit 1
+          fi
+          args=(
+            -t "${IMG}:${DISTRO}-${V}"
+            -t "${IMG}:${DISTRO}-${MIN}"
+            -t "${IMG}:${DISTRO}-${MAJ}"
+          )
+          if [[ "${V}" != *-* ]]; then
+            args+=(-t "${IMG}:${DISTRO}-latest")
+          fi
+          docker buildx imagetools create "${args[@]}" "${src}"
