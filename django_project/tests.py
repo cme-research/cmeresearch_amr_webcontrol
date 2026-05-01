@@ -26,7 +26,7 @@ class MQTTClientModuleTests(SimpleTestCase):
         self.temp_cfg = self.temp_dir / 'temp_app_config.json'
         cfg = {
             "mqtt": {"broker_url": "test-broker", "broker_port": 1884, "subscribe_topic": "test_topic"},
-            "topics": {"movement": "t/move", "move_base_goal": "t/goal"},
+            "topics": {"movement": "t/move", "move_base_goal": "t/goal", "robot_state": "t/robot_state", "robot_cmd": "t/robot_cmd"},
             "map": {"width": 10, "height": 12, "resolution": 0.1, "origin_x": -5.0, "origin_y": -6.0, "obstacles": []}
         }
         with open(self.temp_cfg, 'w') as f:
@@ -62,7 +62,9 @@ class MQTTClientModuleTests(SimpleTestCase):
         # Subscribe topic should be updated from config on connect
         # Simulate on_connect and ensure subscribe used provided topic
         self.mqtt_module.on_connect(self.fake_client, None, None, 0)
-        self.fake_client.subscribe.assert_called_with('test_topic')
+        subscribe_calls = [c.args[0] for c in self.fake_client.subscribe.call_args_list]
+        self.assertIn('test_topic', subscribe_calls)
+        self.assertIn('t/robot_state', subscribe_calls)
 
     def test_on_message_updates_pose_and_queue(self):
         # Build a fake message payload

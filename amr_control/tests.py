@@ -44,6 +44,19 @@ class ViewTests(TestCase):
             self.assertEqual(data['status'], 'success')
             self.assertIn('Shutdown request sent via MQTT', data['message'])
 
+    def test_reset_estop_ajax(self):
+        with mock.patch('amr_control.views.send_robot_command', return_value=True) as send_cmd:
+            resp = self.client.post(
+                reverse('handle_button'),
+                data={'button_type': 'button3'},
+                HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+            )
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertEqual(data['status'], 'success')
+            self.assertIn('Reset sent', data['message'])
+            send_cmd.assert_called_once_with('reset')
+
     def test_handle_button_movement_ajax(self):
         # Patch mqtt client to simulate connected & successful publish
         with mock.patch('amr_control.views.send_movement_command', return_value=True) as send_cmd:

@@ -63,6 +63,24 @@
         .status-disconnected {
             background-color: #dc3545;
         }
+        .state-badge {
+            font-size: 0.85rem;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+        .state-unknown       { background-color: #6c757d; color: #fff; }
+        .state-initializing  { background-color: #ffc107; color: #212529; }
+        .state-idle          { background-color: #0d6efd; color: #fff; }
+        .state-moving        { background-color: #198754; color: #fff; }
+        .state-driver_error   { background-color: #fd7e14; color: #fff; }
+        .state-emergency_stop { background-color: #dc3545; color: #fff; }
+        .motor-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
+        .motor-ok    { background-color: #198754; color: #fff; }
+        .motor-warn  { background-color: #dc3545; color: #fff; }
+        .motor-init  { background-color: #ffc107; color: #212529; }
+        .motor-idle  { background-color: #6c757d; color: #fff; }
     </style>
 </head>
 <body>
@@ -73,6 +91,7 @@
                 <i class="fas fa-robot me-2"></i>AMR Control Dashboard
             </a>
             <div class="ms-auto d-flex align-items-center">
+                <span id="robot-state-badge" class="state-badge state-unknown me-3">unknown</span>
                 <span class="text-light me-2">MQTT:</span>
                 <span class="status-indicator status-connected" id="connection-status"></span>
                 <span class="text-light" id="connection-text">Connected</span>
@@ -212,21 +231,46 @@
                         <i class="fas fa-gamepad me-2"></i>Robot Control
                     </div>
                     <div class="card-body">
-                        <form method="post" action="{% url 'handle_button' %}">
+                        <form method="post" action="{% url 'handle_button' %}" id="mission-form">
                             {% csrf_token %}
                             <div class="row">
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <button type="submit" name="button_type" value="button1" class="btn btn-primary action-btn">
                                         <i class="fas fa-play me-2"></i>Start Mission
                                     </button>
                                 </div>
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <button type="submit" name="button_type" value="button2" class="btn btn-danger action-btn">
                                         <i class="fas fa-stop me-2"></i>Emergency Stop
                                     </button>
                                 </div>
+                                <div class="col-md-4">
+                                    <button type="submit" name="button_type" value="button3" id="reset-btn" class="btn btn-warning action-btn" disabled>
+                                        <i class="fas fa-undo me-2"></i>Reset / Clear E-Stop
+                                    </button>
+                                </div>
                             </div>
                         </form>
+
+                        <!-- Motor status grid (shown when state machine has driver info) -->
+                        <div id="motor-status-panel" class="mt-3" style="display:none;">
+                            <hr class="my-2">
+                            <div class="d-flex align-items-center mb-2">
+                                <small class="text-muted me-2">Motor status:</small>
+                                <div id="motor-status-grid" class="d-flex gap-2 flex-wrap"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Emergency Stop Banner (hidden by default) -->
+            <div id="estop-banner" class="col-md-12 mt-2" style="display:none;">
+                <div class="alert alert-danger d-flex align-items-center mb-0 py-2" role="alert">
+                    <i class="fas fa-exclamation-triangle fa-lg me-3"></i>
+                    <div>
+                        <strong>EMERGENCY STOP ACTIVE</strong>
+                        <span id="estop-reason" class="ms-2 text-danger-emphasis"></span>
                     </div>
                 </div>
             </div>
@@ -499,6 +543,105 @@
             }
         });
 
+        // State badge
+        const robotStateBadge = document.getElementById('robot-state-badge');
+        const STATE_LABELS = {
+            'unknown':       'Unknown',
+            'initializing':  'Initializing…',
+            'driver_error':  'DRIVER ERROR',
+            'idle':          'Idle',
+            'moving':        'Moving',
+            'emergency_stop': 'EMERGENCY STOP',
+        };
+        const resetBtn = document.getElementById('reset-btn');
+        const estopBanner = document.getElementById('estop-banner');
+        const estopReason = document.getElementById('estop-reason');
+        const motorPanel = document.getElementById('motor-status-panel');
+        const motorGrid = document.getElementById('motor-status-grid');
+
+        const MOTOR_STATE_LABEL = {
+            'initialized': 'OK',
+            'idle': 'Idle',
+            'low_voltage': 'LOW VOLT',
+            'error': 'ERROR',
+            '': '…',
+        };
+
+        function motorClass(s) {
+            if (s === 'initialized') return 'motor-ok';
+            if (s === 'idle') return 'motor-idle';
+            if (s === 'low_voltage' || s === 'error') return 'motor-warn';
+            return 'motor-init';
+        }
+
+        function updateMotorGrid(names, states) {
+            if (!names || names.length === 0) { motorPanel.style.display = 'none'; return; }
+            motorPanel.style.display = '';
+            motorGrid.innerHTML = '';
+            names.forEach(function(name, i) {
+                const st = states[i] || '';
+                const span = document.createElement('span');
+                span.className = 'motor-badge ' + motorClass(st);
+                span.textContent = name.replace('_', ' ') + ': ' + (MOTOR_STATE_LABEL[st] || st);
+                motorGrid.appendChild(span);
+            });
+            // Show low-voltage reason in e-stop banner if any motor is in low_voltage
+            const lowVoltMotors = names.filter((_, i) => states[i] === 'low_voltage');
+            if (lowVoltMotors.length > 0 && estopReason) {
+                estopReason.textContent = '— Low voltage on: ' + lowVoltMotors.map(n => n.replace('_', ' ')).join(', ');
+            } else if (estopReason) {
+                estopReason.textContent = '';
+            }
+        }
+
+        function updateStateBadge(state, driverNames, driverStates) {
+            const label = STATE_LABELS[state] || state;
+            robotStateBadge.textContent = label;
+            robotStateBadge.className = 'state-badge state-' + (state || 'unknown');
+            if (resetBtn) {
+                resetBtn.disabled = (state !== 'emergency_stop');
+            }
+            const isEstop = (state === 'emergency_stop');
+            if (estopBanner) estopBanner.style.display = isEstop ? '' : 'none';
+            updateMotorGrid(driverNames || [], driverStates || []);
+        }
+
+        // Mission form — AJAX submission
+        const missionForm = document.getElementById('mission-form');
+        if (missionForm) {
+            missionForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(missionForm);
+                const clickedButton = e.submitter;
+                if (clickedButton) {
+                    formData.set(clickedButton.name, clickedButton.value);
+                }
+                fetch(missionForm.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                .then(r => r.json())
+                .then(data => {
+                    const toastContainer = document.querySelector('.toast-container');
+                    const toastEl = document.createElement('div');
+                    toastEl.className = `toast`;
+                    toastEl.setAttribute('role', 'alert');
+                    toastEl.setAttribute('data-bs-autohide', 'true');
+                    toastEl.setAttribute('data-bs-delay', '4000');
+                    toastEl.innerHTML = `
+                        <div class="toast-header ${data.status === 'success' ? 'bg-success' : 'bg-danger'} text-white">
+                            <strong class="me-auto">${data.status === 'success' ? 'Success' : 'Error'}</strong>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+                        </div>
+                        <div class="toast-body">${data.message}</div>`;
+                    toastContainer.appendChild(toastEl);
+                    new bootstrap.Toast(toastEl).show();
+                })
+                .catch(err => console.error('Mission form error:', err));
+            });
+        }
+
         // Get DOM elements
         const headerTime = document.getElementById('header-time');
         const linearX = document.getElementById('linear-x');
@@ -550,6 +693,11 @@
             } else {
                 connectionStatus.className = "status-indicator status-disconnected";
                 connectionText.textContent = "Disconnected";
+            }
+
+            // Always update the state badge if present
+            if (data_json.robot_state !== undefined) {
+                updateStateBadge(data_json.robot_state, data_json.driver_names, data_json.driver_states);
             }
 
             // If this is just a status update, don't update the data fields

@@ -6,7 +6,9 @@
   },
   "topics": {
     "movement": "cmeresearch/cmexa-001/mqtt/cmd_vel",
-    "move_base_goal": "cmeresearch/cmexa-001/amr_control/move_base_goal"
+    "move_base_goal": "cmeresearch/cmexa-001/amr_control/move_base_goal",
+    "robot_state": "cmeresearch/cmexaiii-001/robot_state",
+    "robot_cmd": "cmeresearch/cmexaiii-001/robot_cmd"
   },
   "velocities": {
     "forward": 0.2,
