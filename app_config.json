@@ -8,7 +8,10 @@
     "movement": "cmeresearch/cmexa-001/mqtt/cmd_vel",
     "move_base_goal": "cmeresearch/cmexa-001/amr_control/move_base_goal",
     "robot_state": "cmeresearch/cmexaiii-001/robot_state",
-    "robot_cmd": "cmeresearch/cmexaiii-001/robot_cmd"
+    "robot_cmd": "cmeresearch/cmexaiii-001/robot_cmd",
+    "nav_status": "cmeresearch/cmexaiii-001/navigation/status",
+    "system_stats": "cmeresearch/cmexaiii-001/system/stats",
+    "motor_feedback_prefix": "cmeresearch/cmexaiii-001/base"
   },
   "velocities": {
     "forward": 0.2,

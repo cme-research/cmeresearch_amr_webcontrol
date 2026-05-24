@@ -21,6 +21,7 @@ from django_project.mqtt_client import (
     message_queue, get_connection_status, send_movement_command,
     send_move_base_goal, get_current_pose, get_map_data, mqtt_client,
     VELOCITY_DEFAULTS, send_robot_command, get_current_robot_state,
+    get_nav_status, get_system_stats, get_motor_feedback,
 )
 from .models import RobotPose
 import json
@@ -495,6 +496,9 @@ def mqtt_stream_view(request):
                 message.setdefault('robot_state', rs['state'])
                 message.setdefault('driver_names', rs.get('driver_names', []))
                 message.setdefault('driver_states', rs.get('driver_states', []))
+                message.setdefault('nav_status', get_nav_status())
+                message.setdefault('system_stats', get_system_stats())
+                message.setdefault('motor_feedback', get_motor_feedback())
                 yield f"data: {json.dumps(message)}\n\n"
                 current_size = message_queue.qsize()
                 print(f"Current size: {current_size}")
@@ -509,6 +513,9 @@ def mqtt_stream_view(request):
                     'robot_state': rs['state'],
                     'driver_names': rs.get('driver_names', []),
                     'driver_states': rs.get('driver_states', []),
+                    'nav_status': get_nav_status(),
+                    'system_stats': get_system_stats(),
+                    'motor_feedback': get_motor_feedback(),
                 }
                 yield f"data: {json.dumps(status_message)}\n\n"
                 last_status = current_status
