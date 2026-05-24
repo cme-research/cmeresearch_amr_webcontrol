@@ -1,5 +1,8 @@
 # Unico AMR Control (Django + MQTT)
 
+[![Release](https://img.shields.io/github/v/release/cme-research/cmeresearch_amr_webcontrol?label=release)](https://github.com/cme-research/cmeresearch_amr_webcontrol/releases)
+[![Docker Build](https://github.com/cme-research/cmeresearch_amr_webcontrol/actions/workflows/docker-build.yml/badge.svg?branch=jazzy)](https://github.com/cme-research/cmeresearch_amr_webcontrol/actions/workflows/docker-build.yml)
+
 A lightweight Django web dashboard to control and monitor an AMR (Autonomous Mobile Robot) via MQTT. It provides:
 - Live connection status over Server-Sent Events (SSE)
 - Manual movement controls and navigation goals published to MQTT
