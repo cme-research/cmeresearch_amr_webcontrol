@@ -58,6 +58,17 @@ jobs:
           cache-from: type=gha,scope=webcontrol
           cache-to: type=gha,mode=max,scope=webcontrol
 
+      # Idempotent: ensures first-push of a new package becomes public so
+      # `docker pull` works without GHCR_TOKEN. Requires PAT with write:packages.
+      - name: Ensure package is public
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          gh api -X PATCH \
+            "/orgs/${{ env.ORG }}/packages/container/${{ env.IMAGE }}/visibility" \
+            -f visibility=public
+
   promote:
     if: github.ref_type == 'tag'
     name: Promote to ${{ github.ref_name }}
