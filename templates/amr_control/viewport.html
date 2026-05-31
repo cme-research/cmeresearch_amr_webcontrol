@@ -765,19 +765,64 @@
             const cpu  = (s.cpu_percent    || 0).toFixed(1);
             const mem  = (s.memory_percent || 0).toFixed(1);
             const temp = (s.temperature_c  || 0).toFixed(1);
+            const disk = (s.disk_percent   || 0).toFixed(1);
             const memUsedGb  = ((s.memory_used_mb  || 0) / 1024).toFixed(1);
             const memTotalGb = ((s.memory_total_mb || 0) / 1024).toFixed(1);
+            const diskUsedGb  = ((s.disk_used_mb  || 0) / 1024).toFixed(1);
+            const diskTotalGb = ((s.disk_total_mb || 0) / 1024).toFixed(1);
             function barColor(pct, warnAt, critAt) {
                 return pct > critAt ? 'bg-danger' : pct > warnAt ? 'bg-warning' : 'bg-success';
             }
             const tempPct = Math.min((s.temperature_c || 0) / 100 * 100, 100);
+            // Host header: "<hardware> — <OS>" if both present, otherwise
+            // whichever one we have. Falls back to empty if neither is set
+            // (Docker containers without /etc/os-release etc.).
+            const hwModel = (s.hardware_model || '').trim();
+            const osName  = (s.os_pretty_name || '').trim();
+            const hostLabel =
+                (hwModel && osName) ? `${hwModel} — ${osName}` :
+                (hwModel || osName);
+            const hostHtml = hostLabel
+                ? `<div class="mb-1"><small class="text-muted" title="kernel ${(s.kernel_release || '?')}">${hostLabel}</small></div>`
+                : '';
+            // RPi throttle status (cmeresearch_msgs/SystemStats.throttle_*).
+            // Currently-active bits live in 0x1|0x2|0x4|0x8; sticky "has
+            // occurred since boot" bits in 0x10000|0x20000|0x40000|0x80000.
+            const throttleBits   = s.throttle_bits   | 0;
+            const throttleActive = !!s.throttle_active;
+            const stickyBits     = throttleBits & 0xF0000;
+            let throttleHtml = '';
+            if (throttleActive || stickyBits) {
+                const labels = [];
+                if (throttleBits & 0x1) labels.push('under-voltage');
+                if (throttleBits & 0x2) labels.push('freq-capped');
+                if (throttleBits & 0x4) labels.push('throttled');
+                if (throttleBits & 0x8) labels.push('soft-temp-limit');
+                let stickyLabel = '';
+                if (stickyBits) {
+                    const since = [];
+                    if (throttleBits & 0x10000) since.push('under-voltage');
+                    if (throttleBits & 0x20000) since.push('freq-cap');
+                    if (throttleBits & 0x40000) since.push('throttled');
+                    if (throttleBits & 0x80000) since.push('soft-temp');
+                    stickyLabel = since.length ? `since boot: ${since.join(', ')}` : '';
+                }
+                const badge = throttleActive
+                    ? `<span class="badge bg-danger" title="${labels.join(', ')}">THROTTLED NOW</span>`
+                    : `<span class="badge bg-warning text-dark" title="${stickyLabel}">throttled since boot</span>`;
+                throttleHtml = `<div class="mt-1"><small>Power: ${badge}</small></div>`;
+            }
             systemStatsPanel.innerHTML =
-                `<div class="mb-1"><small>CPU: <strong>${cpu}%</strong></small>
+                `${hostHtml}
+                <div class="mb-1"><small>CPU: <strong>${cpu}%</strong></small>
                     <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.cpu_percent,60,80)}" style="width:${Math.min(s.cpu_percent||0,100)}%"></div></div></div>
                 <div class="mb-1"><small>Mem: <strong>${memUsedGb}/${memTotalGb}\u00a0GB</strong></small>
                     <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.memory_percent,60,80)}" style="width:${Math.min(s.memory_percent||0,100)}%"></div></div></div>
+                <div class="mb-1"><small>Disk: <strong>${diskUsedGb}/${diskTotalGb}\u00a0GB</strong></small>
+                    <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.disk_percent,70,90)}" style="width:${Math.min(s.disk_percent||0,100)}%"></div></div></div>
                 <div><small>Temp: <strong>${temp}\u00b0C</strong></small>
-                    <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.temperature_c,60,75)}" style="width:${tempPct}%"></div></div></div>`;
+                    <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.temperature_c,60,75)}" style="width:${tempPct}%"></div></div></div>
+                ${throttleHtml}`;
         }
 
         const voltageBars = document.getElementById('voltage-bars');
