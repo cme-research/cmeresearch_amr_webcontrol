@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.1.2...jazzy-v0.1.3) (2026-05-31)
+
+
+### Bug Fixes
+
+* **entrypoint:** drop redundant in-container mosquitto broker ([#13](https://github.com/cme-research/cmeresearch_amr_webcontrol/issues/13)) ([2a3e284](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/2a3e284f60ce667405eb451a8f9ea8b1000624e2))
+* **webapp:** subscribe to base/odometry; display host/disk/throttle ([#14](https://github.com/cme-research/cmeresearch_amr_webcontrol/issues/14)) ([f95c149](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/f95c149845b2f60ac079e761202594616734b8a8))
+
 ## [0.1.2](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.1.1...jazzy-v0.1.2) (2026-05-29)
 
 
