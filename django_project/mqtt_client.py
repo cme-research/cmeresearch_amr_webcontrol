@@ -425,14 +425,20 @@ def _load_app_config():
 
                 topics = data.get('topics', {})
                 if isinstance(topics, dict):
-                    if isinstance(topics.get('movement'), str) and topics.get('movement'):
-                        cfg['topics']['movement'] = topics['movement']
-                    if isinstance(topics.get('move_base_goal'), str) and topics.get('move_base_goal'):
-                        cfg['topics']['move_base_goal'] = topics['move_base_goal']
-                    if isinstance(topics.get('robot_state'), str) and topics.get('robot_state'):
-                        cfg['topics']['robot_state'] = topics['robot_state']
-                    if isinstance(topics.get('robot_cmd'), str) and topics.get('robot_cmd'):
-                        cfg['topics']['robot_cmd'] = topics['robot_cmd']
+                    # Nimmt alle string-valued Topic-Einträge aus app_config in
+                    # cfg['topics'] auf, damit die nachgelagerten
+                    # `_app_conf['topics'].get(...)` Aufrufe sie auch finden.
+                    # Frühere Versionen haben hier nur movement/move_base_goal/
+                    # robot_state/robot_cmd übertragen, sodass nav_status,
+                    # system_stats und motor_feedback_prefix auf die
+                    # initialen Hard-coded-Defaults zurückgefallen sind
+                    # (z. B. "system/stats" statt
+                    # "cmeresearch/cmexaiii-001/system/stats") — Webapp
+                    # subscribete dadurch leere Topics und zeigte permanent
+                    # "Waiting for data…".
+                    for _k, _v in topics.items():
+                        if isinstance(_v, str) and _v:
+                            cfg['topics'][_k] = _v
 
                 # Velocities configuration (optional)
                 vels = data.get('velocities', {})
