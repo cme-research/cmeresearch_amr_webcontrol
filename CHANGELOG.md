@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.1.3...jazzy-v0.2.0) (2026-06-05)
+
+
+### Neue Features
+
+* **ui:** professional-restraint style overhaul ([#18](https://github.com/cme-research/cmeresearch_amr_webcontrol/issues/18)) ([6650803](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/6650803668151167ef17c35e0c66aebb6dfc6abe))
+* **ui:** show System Status as text + fix topic-config passthrough ([#17](https://github.com/cme-research/cmeresearch_amr_webcontrol/issues/17)) ([64c1fbc](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/64c1fbc198ddfea9adebacec91eced8f02a6728e))
+
 ## [0.1.3](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.1.2...jazzy-v0.1.3) (2026-05-31)
 
 
