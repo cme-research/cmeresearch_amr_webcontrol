@@ -9,78 +9,151 @@
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        :root {
+            --bg-page:        #f4f5f7;
+            --bg-card:        #ffffff;
+            --bg-elevated:    #fafbfc;
+            --border-subtle:  #e3e6ea;
+            --border-strong:  #c8cdd3;
+            --text-primary:   #1f2937;
+            --text-secondary: #4b5563;
+            --text-muted:     #6b7280;
+            /* Akzentfarben — bewusst entsättigt gegenüber Bootstrap-Defaults */
+            --accent-primary: #2c5282;
+            --accent-success: #2f7a4f;
+            --accent-warning: #b87914;
+            --accent-danger:  #a82c3b;
+            --accent-neutral: #5b6271;
+        }
         body {
-            background-color: #f8f9fa;
+            background-color: var(--bg-page);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                         "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-feature-settings: "tnum";
             padding-top: 60px;
         }
+        /* Navbar bleibt dunkel, aber als Slate statt schwarz */
+        .navbar.bg-dark { background-color: #1c2231 !important; }
+        .navbar-brand { font-weight: 500; letter-spacing: 0.01em; }
+
+        /* Cards: flach, dünner Border statt Schatten, keine Hover-Spielerei */
         .card {
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s;
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 4px;
+            box-shadow: none;
+            margin-bottom: 16px;
+            transition: none;
         }
-        .card:hover {
-            transform: translateY(-5px);
+        .card:hover { transform: none; }
+        .card-body { color: var(--text-primary); }
+
+        /* Card-Header einheitlich neutral, Akzent nur als Icon links */
+        .card-header,
+        .card-header.bg-primary,
+        .card-header.bg-success,
+        .card-header.bg-info,
+        .card-header.bg-warning,
+        .card-header.bg-secondary {
+            background-color: var(--bg-elevated) !important;
+            color: var(--text-primary) !important;
+            border-bottom: 1px solid var(--border-subtle);
+            font-weight: 500;
+            font-size: 0.9rem;
+            letter-spacing: 0.02em;
+            padding: 0.55rem 0.95rem;
         }
-        .card-header {
-            font-weight: bold;
-            background-color: #6c757d;
-            color: white;
-        }
+        .card-header i { color: var(--text-muted); margin-right: 0.5rem; }
+
         .value-display {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #343a40;
+            font-size: 1.4rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+            margin-bottom: 0.2rem;
         }
-        .unit {
-            font-size: 0.8rem;
-            color: #6c757d;
-        }
+        .unit, .timestamp { font-size: 0.78rem; color: var(--text-muted); }
+
+        /* Schmalere, ruhigere Progress Bars */
         .progress {
-            height: 10px;
-            margin-top: 10px;
+            height: 6px;
+            margin-top: 8px;
+            background-color: var(--border-subtle);
+            border-radius: 3px;
         }
-        .action-btn {
-            width: 100%;
-            margin-bottom: 10px;
+        .progress-bar           { background-color: var(--accent-primary) !important; }
+        .progress-bar.bg-success{ background-color: var(--accent-success) !important; }
+        .progress-bar.bg-info   { background-color: var(--accent-primary) !important; }
+        .progress-bar.bg-warning{ background-color: var(--accent-warning) !important; }
+        .progress-bar.bg-danger { background-color: var(--accent-danger)  !important; }
+
+        /* Buttons */
+        .action-btn { width: 100%; margin-bottom: 8px; }
+        .btn-primary {
+            background-color: var(--accent-primary);
+            border-color: var(--accent-primary);
         }
-        .timestamp {
-            font-size: 0.8rem;
-            color: #6c757d;
+        .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+            background-color: #224372;
+            border-color: #224372;
         }
-        .navbar-brand {
-            font-weight: bold;
+        .btn-danger {
+            background-color: var(--accent-danger);
+            border-color: var(--accent-danger);
         }
+        .btn-danger:hover, .btn-danger:focus, .btn-danger:active {
+            background-color: #8a2231; border-color: #8a2231;
+        }
+        .btn-warning {
+            background-color: var(--accent-warning);
+            border-color: var(--accent-warning);
+            color: #fff;
+        }
+        .btn-warning:hover, .btn-warning:focus, .btn-warning:active {
+            background-color: #95610f; border-color: #95610f; color: #fff;
+        }
+
+        /* MQTT-Connection-Dot */
         .status-indicator {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 5px;
+            width: 8px; height: 8px; border-radius: 50%;
+            display: inline-block; margin-right: 6px;
         }
-        .status-connected {
-            background-color: #28a745;
-        }
-        .status-disconnected {
-            background-color: #dc3545;
-        }
+        .status-connected    { background-color: var(--accent-success); }
+        .status-disconnected { background-color: var(--accent-danger);  }
+        .status-warning      { background-color: var(--accent-warning); }
+
+        /* Robot-State-Badge: dezent rechteckig, klein-Kapitälchen-Anmutung */
         .state-badge {
-            font-size: 0.85rem;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-weight: 600;
-            letter-spacing: 0.03em;
+            font-size: 0.78rem;
+            padding: 3px 9px;
+            border-radius: 3px;
+            font-weight: 500;
+            letter-spacing: 0.04em;
+            text-transform: lowercase;
         }
-        .state-unknown       { background-color: #6c757d; color: #fff; }
-        .state-initializing  { background-color: #ffc107; color: #212529; }
-        .state-idle          { background-color: #0d6efd; color: #fff; }
-        .state-moving        { background-color: #198754; color: #fff; }
-        .state-driver_error   { background-color: #fd7e14; color: #fff; }
-        .state-emergency_stop { background-color: #dc3545; color: #fff; }
-        .motor-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
-        .motor-ok    { background-color: #198754; color: #fff; }
-        .motor-warn  { background-color: #dc3545; color: #fff; }
-        .motor-init  { background-color: #ffc107; color: #212529; }
-        .motor-idle  { background-color: #6c757d; color: #fff; }
+        .state-unknown        { background-color: var(--accent-neutral); color: #fff; }
+        .state-initializing   { background-color: var(--accent-warning); color: #fff; }
+        .state-idle           { background-color: var(--accent-primary); color: #fff; }
+        .state-moving         { background-color: var(--accent-success); color: #fff; }
+        .state-driver_error   { background-color: var(--accent-warning); color: #fff; }
+        .state-emergency_stop { background-color: var(--accent-danger);  color: #fff; }
+
+        /* Motor-Badges: Outline-Style statt vollflächig, deutlich ruhiger */
+        .motor-badge {
+            font-size: 0.74rem;
+            padding: 2px 7px;
+            border-radius: 3px;
+            font-weight: 500;
+            white-space: nowrap;
+            background-color: transparent;
+            border: 1px solid var(--border-strong);
+            color: var(--text-secondary);
+        }
+        .motor-ok    { border-color: var(--accent-success); color: var(--accent-success); }
+        .motor-warn  { border-color: var(--accent-danger);  color: var(--accent-danger);  }
+        .motor-init  { border-color: var(--accent-warning); color: var(--accent-warning); }
+        .motor-idle  { border-color: var(--accent-neutral); color: var(--accent-neutral); }
     </style>
 </head>
 <body>
@@ -137,13 +210,17 @@
                         <i class="fas fa-clock me-2"></i>System Status
                     </div>
                     <div class="card-body">
-                        <div class="row">
+                        <div class="row align-items-center">
                             <div class="col-md-6">
-                                <p class="mb-1">Last Update:</p>
-                                <p class="value-display" id="header-time">-</p>
+                                <p class="mb-1">Stream:</p>
+                                <p class="value-display d-flex align-items-center gap-2 mb-0">
+                                    <span id="sse-status-dot" class="status-indicator status-disconnected"></span>
+                                    <span id="sse-status-text">Warte auf Daten…</span>
+                                </p>
                             </div>
                             <div class="col-md-6 text-end">
-                                <p class="timestamp" id="local-time"></p>
+                                <p class="mb-1">Lokale Zeit:</p>
+                                <p class="timestamp mb-0" id="local-time">&mdash;</p>
                             </div>
                         </div>
                     </div>
@@ -702,7 +779,9 @@
         }
 
         // Get DOM elements
-        const headerTime = document.getElementById('header-time');
+        const sseStatusDot = document.getElementById('sse-status-dot');
+        const sseStatusText = document.getElementById('sse-status-text');
+        let lastSseAt = null;
         const linearX = document.getElementById('linear-x');
         const linearY = document.getElementById('linear-y');
         const angularZ = document.getElementById('angular-z');
@@ -729,12 +808,43 @@
         // Update local time
         function updateLocalTime() {
             const now = new Date();
-            localTime.textContent = 'Local Time: ' + now.toLocaleTimeString();
+            localTime.textContent = now.toLocaleTimeString();
         }
 
         // Update local time every second
         setInterval(updateLocalTime, 1000);
         updateLocalTime();
+
+        // SSE-Stream-Frische-Indikator. lastSseAt wird bei jeder eingehenden
+        // SSE-Nachricht aktualisiert (s. eventSource.onmessage weiter unten).
+        // < 3s Alter → grüner Punkt "Live", < 10s → gelber Punkt "Verzögert",
+        // sonst → roter Punkt "Stale". Ersetzt die früher angezeigte rohe
+        // header.time-ROS-Epoch, die in der Sim 0 und auf der Hardware eine
+        // un-lesbare Float-Zahl war.
+        function updateSseFreshness() {
+            if (!sseStatusDot || !sseStatusText) return;
+            if (lastSseAt === null) {
+                sseStatusDot.className = 'status-indicator status-disconnected';
+                sseStatusText.textContent = 'Warte auf Daten…';
+                return;
+            }
+            const ageMs = Date.now() - lastSseAt;
+            const ageS  = Math.max(0, Math.round(ageMs / 1000));
+            let label, dotCls;
+            if (ageMs < 3000) {
+                label = 'Live · vor ' + ageS + ' s';
+                dotCls = 'status-connected';
+            } else if (ageMs < 10000) {
+                label = 'Verzögert · vor ' + ageS + ' s';
+                dotCls = 'status-warning';
+            } else {
+                label = 'Stale · vor ' + ageS + ' s';
+                dotCls = 'status-disconnected';
+            }
+            sseStatusDot.className = 'status-indicator ' + dotCls;
+            sseStatusText.textContent = label;
+        }
+        setInterval(updateSseFreshness, 1000);
 
         // --- Telemetry panel updaters ---
 
@@ -757,23 +867,60 @@
 
         const systemStatsPanel = document.getElementById('system-stats-panel');
 
+        // Stufen-Klassifikation: nimmt eine Zahl und liefert den ersten Bucket
+        // dessen upTo nicht überschritten ist. Buckets sind aufsteigend nach
+        // upper-bound sortiert; Infinity fängt alles darüber. Wir wollen
+        // Status-Text statt nackter Prozentzahlen, weil "Niedrig"/"Normal"/
+        // "Warm"/"Kritisch" für den Operator schneller zu lesen sind — der
+        // Tooltip blendet den genauen Wert ein wenn er gebraucht wird.
+        function classify(value, buckets) {
+            for (const b of buckets) { if (value <= b.upTo) return b; }
+            return buckets[buckets.length - 1];
+        }
+        const CPU_BUCKETS = [
+            {upTo: 30,       label: 'Niedrig',  cls: 'text-muted'},
+            {upTo: 60,       label: 'Normal',   cls: 'text-success'},
+            {upTo: 85,       label: 'Erhöht',   cls: 'text-warning'},
+            {upTo: Infinity, label: 'Kritisch', cls: 'text-danger'},
+        ];
+        const MEM_BUCKETS = [
+            {upTo: 50,       label: 'Niedrig',  cls: 'text-muted'},
+            {upTo: 75,       label: 'Normal',   cls: 'text-success'},
+            {upTo: 90,       label: 'Voll',     cls: 'text-warning'},
+            {upTo: Infinity, label: 'Kritisch', cls: 'text-danger'},
+        ];
+        const DISK_BUCKETS = [
+            {upTo: 70,       label: 'Genug Platz', cls: 'text-success'},
+            {upTo: 85,       label: 'Mäßig voll',  cls: 'text-warning'},
+            {upTo: 95,       label: 'Knapp',       cls: 'text-warning'},
+            {upTo: Infinity, label: 'Kritisch',    cls: 'text-danger'},
+        ];
+        // Temperatur-Schwellen für RPi-typische Lasten (Idle ~35 °C, Last
+        // ~55 °C, Throttling beginnt bei ~80 °C, Hard-Cap 85 °C).
+        const TEMP_BUCKETS = [
+            {upTo: 45,       label: 'Kühl',     cls: 'text-muted'},
+            {upTo: 65,       label: 'Normal',   cls: 'text-success'},
+            {upTo: 80,       label: 'Warm',     cls: 'text-warning'},
+            {upTo: Infinity, label: 'Heiß',     cls: 'text-danger'},
+        ];
+
+        // Erzeugt eine Zeile <Label> | <farbiger Status-Text>. tooltip enthält
+        // den Original-Wert; auf Hover (oder Long-Press am Touch) wird der
+        // genaue numerische Wert sichtbar.
+        function statsRow(label, statusLabel, statusCls, tooltip) {
+            const safeTip = String(tooltip).replace(/"/g, '&quot;');
+            return '<div class="d-flex justify-content-between mb-1" title="' +
+                   safeTip + '"><small class="text-muted">' + label +
+                   '</small><small class="' + statusCls + '"><strong>' +
+                   statusLabel + '</strong></small></div>';
+        }
+
         function updateSystemStats(statsRaw) {
             if (!systemStatsPanel || !statsRaw) return;
             let s;
             try { s = typeof statsRaw === 'string' ? JSON.parse(statsRaw) : statsRaw; }
             catch (e) { return; }
-            const cpu  = (s.cpu_percent    || 0).toFixed(1);
-            const mem  = (s.memory_percent || 0).toFixed(1);
-            const temp = (s.temperature_c  || 0).toFixed(1);
-            const disk = (s.disk_percent   || 0).toFixed(1);
-            const memUsedGb  = ((s.memory_used_mb  || 0) / 1024).toFixed(1);
-            const memTotalGb = ((s.memory_total_mb || 0) / 1024).toFixed(1);
-            const diskUsedGb  = ((s.disk_used_mb  || 0) / 1024).toFixed(1);
-            const diskTotalGb = ((s.disk_total_mb || 0) / 1024).toFixed(1);
-            function barColor(pct, warnAt, critAt) {
-                return pct > critAt ? 'bg-danger' : pct > warnAt ? 'bg-warning' : 'bg-success';
-            }
-            const tempPct = Math.min((s.temperature_c || 0) / 100 * 100, 100);
+
             // Host header: "<hardware> — <OS>" if both present, otherwise
             // whichever one we have. Falls back to empty if neither is set
             // (Docker containers without /etc/os-release etc.).
@@ -783,46 +930,69 @@
                 (hwModel && osName) ? `${hwModel} — ${osName}` :
                 (hwModel || osName);
             const hostHtml = hostLabel
-                ? `<div class="mb-1"><small class="text-muted" title="kernel ${(s.kernel_release || '?')}">${hostLabel}</small></div>`
+                ? `<div class="mb-2"><small class="text-muted" title="kernel ${(s.kernel_release || '?')}">${hostLabel}</small></div>`
                 : '';
-            // RPi throttle status (cmeresearch_msgs/SystemStats.throttle_*).
-            // Currently-active bits live in 0x1|0x2|0x4|0x8; sticky "has
-            // occurred since boot" bits in 0x10000|0x20000|0x40000|0x80000.
+
+            // Vier Metrik-Zeilen mit Text-Status statt nackter Zahl. Der
+            // Tooltip hält den genauen Wert für Diagnose-Zwecke vor.
+            const cpuPct  = s.cpu_percent    || 0;
+            const memPct  = s.memory_percent || 0;
+            const diskPct = s.disk_percent   || 0;
+            const tempC   = s.temperature_c  || 0;
+            const memUsedGb   = ((s.memory_used_mb  || 0) / 1024).toFixed(1);
+            const memTotalGb  = ((s.memory_total_mb || 0) / 1024).toFixed(1);
+            const diskUsedGb  = ((s.disk_used_mb  || 0) / 1024).toFixed(1);
+            const diskTotalGb = ((s.disk_total_mb || 0) / 1024).toFixed(1);
+
+            const cpuB  = classify(cpuPct,  CPU_BUCKETS);
+            const memB  = classify(memPct,  MEM_BUCKETS);
+            const diskB = classify(diskPct, DISK_BUCKETS);
+            const tempB = classify(tempC,   TEMP_BUCKETS);
+
+            const rows =
+                statsRow('CPU',  cpuB.label,  cpuB.cls,
+                         'Auslastung: ' + cpuPct.toFixed(1) + ' %') +
+                statsRow('RAM',  memB.label,  memB.cls,
+                         memUsedGb + ' / ' + memTotalGb + ' GB (' + memPct.toFixed(1) + ' %)') +
+                statsRow('Disk', diskB.label, diskB.cls,
+                         diskUsedGb + ' / ' + diskTotalGb + ' GB (' + diskPct.toFixed(1) + ' %)') +
+                statsRow('Temp', tempB.label, tempB.cls,
+                         tempC.toFixed(1) + ' °C');
+
+            // Power/Throttle bekommt die gleiche Text-Behandlung. Bit-Layout
+            // dokumentiert in cmeresearch_msgs/SystemStats.msg:
+            //   0x1  under-voltage    0x10000  under-voltage seit Boot
+            //   0x2  freq-capped      0x20000  freq-cap seit Boot
+            //   0x4  throttled        0x40000  throttled seit Boot
+            //   0x8  soft-temp-limit  0x80000  soft-temp seit Boot
             const throttleBits   = s.throttle_bits   | 0;
             const throttleActive = !!s.throttle_active;
             const stickyBits     = throttleBits & 0xF0000;
-            let throttleHtml = '';
-            if (throttleActive || stickyBits) {
-                const labels = [];
-                if (throttleBits & 0x1) labels.push('under-voltage');
-                if (throttleBits & 0x2) labels.push('freq-capped');
-                if (throttleBits & 0x4) labels.push('throttled');
-                if (throttleBits & 0x8) labels.push('soft-temp-limit');
-                let stickyLabel = '';
-                if (stickyBits) {
-                    const since = [];
-                    if (throttleBits & 0x10000) since.push('under-voltage');
-                    if (throttleBits & 0x20000) since.push('freq-cap');
-                    if (throttleBits & 0x40000) since.push('throttled');
-                    if (throttleBits & 0x80000) since.push('soft-temp');
-                    stickyLabel = since.length ? `since boot: ${since.join(', ')}` : '';
-                }
-                const badge = throttleActive
-                    ? `<span class="badge bg-danger" title="${labels.join(', ')}">THROTTLED NOW</span>`
-                    : `<span class="badge bg-warning text-dark" title="${stickyLabel}">throttled since boot</span>`;
-                throttleHtml = `<div class="mt-1"><small>Power: ${badge}</small></div>`;
+            let powerLabel = 'OK';
+            let powerCls   = 'text-success';
+            let powerTip   = 'Keine Throttle-Events';
+            if (throttleActive) {
+                const active = [];
+                if (throttleBits & 0x1) active.push('under-voltage');
+                if (throttleBits & 0x2) active.push('freq-capped');
+                if (throttleBits & 0x4) active.push('throttled');
+                if (throttleBits & 0x8) active.push('soft-temp-limit');
+                powerLabel = 'Throttled';
+                powerCls   = 'text-danger';
+                powerTip   = 'Aktiv: ' + active.join(', ');
+            } else if (stickyBits) {
+                const since = [];
+                if (throttleBits & 0x10000) since.push('under-voltage');
+                if (throttleBits & 0x20000) since.push('freq-cap');
+                if (throttleBits & 0x40000) since.push('throttled');
+                if (throttleBits & 0x80000) since.push('soft-temp');
+                powerLabel = 'Warnung';
+                powerCls   = 'text-warning';
+                powerTip   = 'Seit Boot: ' + since.join(', ');
             }
-            systemStatsPanel.innerHTML =
-                `${hostHtml}
-                <div class="mb-1"><small>CPU: <strong>${cpu}%</strong></small>
-                    <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.cpu_percent,60,80)}" style="width:${Math.min(s.cpu_percent||0,100)}%"></div></div></div>
-                <div class="mb-1"><small>Mem: <strong>${memUsedGb}/${memTotalGb}\u00a0GB</strong></small>
-                    <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.memory_percent,60,80)}" style="width:${Math.min(s.memory_percent||0,100)}%"></div></div></div>
-                <div class="mb-1"><small>Disk: <strong>${diskUsedGb}/${diskTotalGb}\u00a0GB</strong></small>
-                    <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.disk_percent,70,90)}" style="width:${Math.min(s.disk_percent||0,100)}%"></div></div></div>
-                <div><small>Temp: <strong>${temp}\u00b0C</strong></small>
-                    <div class="progress" style="height:6px;"><div class="progress-bar ${barColor(s.temperature_c,60,75)}" style="width:${tempPct}%"></div></div></div>
-                ${throttleHtml}`;
+            const powerRow = statsRow('Power', powerLabel, powerCls, powerTip);
+
+            systemStatsPanel.innerHTML = hostHtml + rows + powerRow;
         }
 
         const voltageBars = document.getElementById('voltage-bars');
@@ -901,8 +1071,9 @@
                 return;
             }
 
-            // Format and display the data with appropriate precision
-            headerTime.textContent = data_json.header.time;
+            // Mark stream as fresh; the periodic updateSseFreshness() turns
+            // this into the green/yellow/red dot in the System Status card.
+            lastSseAt = Date.now();
 
             // Velocity data with 2 decimal places
             const lx = parseFloat(data_json.linear.x).toFixed(2);
