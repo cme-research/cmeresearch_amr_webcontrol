@@ -1,0 +1,60 @@
+{% extends 'amr_control/_base.html' %}
+{% block title %}Teleop · AMR Control{% endblock %}
+
+{% block content %}
+<!-- Compact status mini-row above the joystick -->
+<div class="mini-row">
+    <div class="mini-tile">
+        <div class="mini-tile-header"><i class="fas fa-clock"></i> Stream</div>
+        <div class="mini-tile-body">
+            <div class="d-flex align-items-center gap-2">
+                <span id="sse-status-dot" class="status-indicator status-disconnected"></span>
+                <span id="sse-status-text">Warte auf Daten…</span>
+            </div>
+            <small class="text-muted timestamp" id="local-time">&mdash;</small>
+        </div>
+    </div>
+    <div class="mini-tile">
+        <div class="mini-tile-header"><i class="fas fa-battery-three-quarters"></i> Motor Voltage</div>
+        <div class="mini-tile-body" id="voltage-bars">
+            <small class="text-muted">Waiting for data…</small>
+        </div>
+    </div>
+    <div class="mini-tile">
+        <div class="mini-tile-header"><i class="fas fa-microchip"></i> System (Pi)</div>
+        <div class="mini-tile-body" id="system-stats-panel">
+            <small class="text-muted">Waiting for data…</small>
+        </div>
+    </div>
+    <div class="mini-tile">
+        <div class="mini-tile-header"><i class="fas fa-tachometer-alt"></i> Motor Velocity</div>
+        <div class="mini-tile-body" id="motor-velocity-panel">
+            <small class="text-muted">Waiting for data…</small>
+        </div>
+    </div>
+</div>
+
+<!-- Movement Control: Touch Joysticks -->
+<div class="card">
+    <div class="card-header"><i class="fas fa-arrows-alt me-2"></i>Movement Control</div>
+    <div class="card-body">
+        <div class="joystick-arm-bar" data-endpoint="{% url 'joystick_cmd' %}">
+            <span>Status: <span id="joy-arm-status" class="arm-status">Gesperrt</span></span>
+            <button type="button" id="joy-arm-btn" class="joystick-arm-btn">Aktivieren</button>
+        </div>
+        <div class="joystick-row">
+            <div class="joystick-zone disarmed" id="joy-linear">
+                <span class="joy-label">Linear (vorne / seitlich)</span>
+            </div>
+            <button type="button" id="joy-stop" class="joystick-stop" aria-label="Notaus">STOP</button>
+            <div class="joystick-zone disarmed" id="joy-angular">
+                <span class="joy-label">Rotation</span>
+            </div>
+        </div>
+        <div class="joystick-meta">
+            <span id="joy-cmd-readout">v=0.00 m/s · vy=0.00 m/s · ω=0.00 rad/s</span>
+            <span id="joy-tx-readout">Letztes Kommando: —</span>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -508,6 +508,20 @@ map_data['origin_y'] = map_conf.get('origin_y', map_data['origin_y'])
 if map_conf.get('obstacles'):
     map_data['obstacles'] = map_conf['obstacles']
 
+# Last Will & Testament: if this MQTT client dies ungracefully (Django crash,
+# container OOM, broker link drop), the broker publishes a zero TwistStamped
+# on cmd_vel on our behalf. twist_mux's 0.5s timeout then brakes the robot.
+# Defense-in-depth alongside the robot-side watchdog and the browser-side
+# visibilitychange/pagehide handlers.
+_LWT_TWIST = {
+    "header": {"frame_id": "base_link", "stamp": {"sec": 0, "nanosec": 0}},
+    "twist": {
+        "linear":  {"x": 0.0, "y": 0.0, "z": 0.0},
+        "angular": {"x": 0.0, "y": 0.0, "z": 0.0},
+    },
+}
+mqtt_client.will_set(MOVEMENT_TOPIC, json.dumps(_LWT_TWIST), qos=1, retain=False)
+
 def _connect_with_retry():
     """Try to connect to the MQTT broker in the background, retrying on failure."""
     retry_delay = 5
