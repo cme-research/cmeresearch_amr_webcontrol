@@ -27,11 +27,55 @@ from .models import RobotPose
 import json
 import paho.mqtt.client as mqtt
 
-def button_view(request):
-    """Render the HTML template with control panels."""
-    # Get all saved poses from the database
+
+# Server-side velocity caps. Browser-side clamps exist too, but never trust
+# the browser — these are the authoritative limits enforced before MQTT publish.
+MAX_LINEAR_X = 0.4   # m/s, forward/backward
+MAX_LINEAR_Y = 0.3   # m/s, lateral strafe (mecanum)
+MAX_ANGULAR_Z = 0.8  # rad/s, yaw
+
+
+def _clamp(value, limit):
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if v != v:  # NaN
+        return 0.0
+    if v > limit:
+        return limit
+    if v < -limit:
+        return -limit
+    return v
+
+def teleop_view(request):
+    """Phone-first teleop page: status mini-row + joystick."""
+    return render(request, 'amr_control/teleop.html', {'active_page': 'teleop'})
+
+
+def mission_view(request):
+    """Mission control: start mission, e-stop, reset."""
+    return render(request, 'amr_control/mission.html', {'active_page': 'mission'})
+
+
+def navigation_view(request):
+    """Navigation: map, position, nav status, velocity, saved poses."""
     saved_poses = RobotPose.objects.all().order_by('-created_at')
-    return render(request, 'amr_control/viewport.html', {'saved_poses': saved_poses})
+    return render(request, 'amr_control/navigation.html', {
+        'active_page': 'navigation',
+        'saved_poses': saved_poses,
+    })
+
+
+def logs_view(request):
+    """Docker container logs (SSE)."""
+    return render(request, 'amr_control/logs.html', {'active_page': 'logs'})
+
+
+# Backwards-compatible alias: old code paths / templates that still reference
+# button_page resolve here. Renders the new teleop page.
+def button_view(request):
+    return teleop_view(request)
 
 
 @csrf_exempt
@@ -281,6 +325,32 @@ def stop_robot(request):
 
     # Return redirect for non-AJAX requests
     return redirect('button_page')
+
+
+@csrf_exempt
+@require_POST
+def joystick_cmd(request):
+    """Continuous teleop endpoint for the touch-joystick UI.
+
+    Accepts JSON {linear_x, linear_y, angular_z}. Each axis is clamped to the
+    server-side maximum before the TwistStamped is published. Returns the
+    actually-published values so the browser can show clamp feedback.
+    """
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+
+    lx = _clamp(payload.get('linear_x', 0.0), MAX_LINEAR_X)
+    ly = _clamp(payload.get('linear_y', 0.0), MAX_LINEAR_Y)
+    az = _clamp(payload.get('angular_z', 0.0), MAX_ANGULAR_Z)
+
+    ok = send_movement_command(linear_x=lx, linear_y=ly, angular_z=az)
+    return JsonResponse({
+        'status': 'success' if ok else 'error',
+        'sent': {'linear_x': lx, 'linear_y': ly, 'angular_z': az},
+        'mqtt_connected': get_connection_status(),
+    }, status=200 if ok else 503)
 
 
 def save_current_pose(request, pose_name):

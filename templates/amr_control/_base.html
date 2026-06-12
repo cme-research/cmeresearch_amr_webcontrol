@@ -1,0 +1,692 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AMR Control Dashboard{% endblock %}</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-page:        #f4f5f7;
+            --bg-card:        #ffffff;
+            --bg-elevated:    #fafbfc;
+            --border-subtle:  #e3e6ea;
+            --border-strong:  #c8cdd3;
+            --text-primary:   #1f2937;
+            --text-secondary: #4b5563;
+            --text-muted:     #6b7280;
+            --accent-primary: #2c5282;
+            --accent-success: #2f7a4f;
+            --accent-warning: #b87914;
+            --accent-danger:  #a82c3b;
+            --accent-neutral: #5b6271;
+        }
+        body { background-color: var(--bg-page); color: var(--text-primary); padding-top: 60px; }
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-subtle); box-shadow: none; }
+        .card-header { background-color: var(--bg-elevated) !important; color: var(--text-primary) !important; border-bottom: 1px solid var(--border-subtle); font-weight: 600; }
+        .card-header.bg-primary, .card-header.bg-info, .card-header.bg-success, .card-header.bg-warning, .card-header.bg-secondary, .card-header.bg-dark { background-color: var(--bg-elevated) !important; color: var(--text-primary) !important; }
+        .card-header i { color: var(--accent-primary); }
+        .value-display { font-size: 1.6rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0; }
+        .unit { font-size: 0.8rem; color: var(--text-muted); }
+        .timestamp { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-secondary); }
+        .progress { height: 8px; background-color: var(--bg-elevated); }
+        .progress-bar.bg-success { background-color: var(--accent-success) !important; }
+        .progress-bar.bg-danger  { background-color: var(--accent-danger) !important; }
+        .progress-bar.bg-warning { background-color: var(--accent-warning) !important; }
+        .progress-bar.bg-info    { background-color: var(--accent-primary) !important; }
+        .progress-bar.bg-primary { background-color: var(--accent-primary) !important; }
+        .progress-bar.bg-secondary { background-color: var(--accent-neutral) !important; }
+        .action-btn { width: 100%; margin-bottom: 8px; }
+        .btn-primary { background-color: var(--accent-primary); border-color: var(--accent-primary); }
+        .btn-success { background-color: var(--accent-success); border-color: var(--accent-success); }
+        .btn-warning { background-color: var(--accent-warning); border-color: var(--accent-warning); color: #fff; }
+        .btn-danger  { background-color: var(--accent-danger); border-color: var(--accent-danger); }
+        .btn-info    { background-color: var(--accent-primary); border-color: var(--accent-primary); color: #fff; }
+        .status-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+        .status-connected    { background-color: var(--accent-success); }
+        .status-warning      { background-color: #ffc107; }
+        .status-disconnected { background-color: var(--accent-danger); }
+        .state-badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; }
+        .state-unknown         { background-color: var(--bg-elevated); color: var(--text-muted); border: 1px solid var(--border-strong); }
+        .state-initializing    { background-color: var(--accent-warning); color: #fff; }
+        .state-driver_error    { background-color: var(--accent-danger);  color: #fff; }
+        .state-idle            { background-color: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-strong); }
+        .state-moving          { background-color: var(--accent-success); color: #fff; }
+        .state-emergency_stop  { background-color: var(--accent-danger);  color: #fff; }
+        .motor-badge { font-size: 0.74rem; padding: 2px 7px; border-radius: 3px; font-weight: 500; white-space: nowrap; background-color: transparent; border: 1px solid var(--border-strong); color: var(--text-secondary); }
+        .motor-ok    { border-color: var(--accent-success); color: var(--accent-success); }
+        .motor-warn  { border-color: var(--accent-danger);  color: var(--accent-danger);  }
+        .motor-init  { border-color: var(--accent-warning); color: var(--accent-warning); }
+        .motor-idle  { border-color: var(--accent-neutral); color: var(--text-secondary); }
+
+        /* ── Navbar mobile compaction ──────────────────────────────────── */
+        .navbar .navbar-brand { font-size: 1rem; }
+        .navbar .nav-link.active { color: #fff !important; font-weight: 600; border-bottom: 2px solid #fff; }
+        .navbar .nav-link { color: rgba(255,255,255,.75); padding: .25rem .75rem; }
+        .navbar .nav-link:hover { color: #fff; }
+        @media (max-width: 575.98px) {
+            .navbar .navbar-brand { font-size: 0.9rem; }
+            .navbar .navbar-brand .brand-long { display: none; }
+            .navbar .nav-link { padding: .25rem .5rem; font-size: .85rem; }
+        }
+
+        /* ── Mini-tile (compact telemetry on teleop page) ─────────────── */
+        .mini-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .mini-tile {
+            flex: 1 1 calc(25% - 8px);
+            min-width: 130px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+        .mini-tile-header {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .mini-tile-header i { color: var(--accent-primary); }
+        .mini-tile-body { font-size: 0.82rem; }
+        .mini-tile-body .progress { height: 4px; }
+        @media (max-width: 575.98px) {
+            .mini-tile { flex: 1 1 calc(50% - 4px); min-width: 0; padding: 6px 8px; font-size: 0.78rem; }
+        }
+
+        /* ── Touch-Joystick Teleop ──────────────────────────────────────── */
+        .joystick-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            gap: 16px;
+            flex-wrap: wrap;
+            padding: 16px 0;
+        }
+        .joystick-zone {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background-color: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            transition: opacity .15s ease;
+        }
+        .joystick-zone.disarmed { opacity: .35; pointer-events: none; }
+        .joystick-zone .joy-label {
+            position: absolute;
+            top: -22px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: .8rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .joystick-stop {
+            flex: 0 0 auto;
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            background-color: var(--accent-danger);
+            color: #fff;
+            border: none;
+            font-weight: 700;
+            font-size: 1.25rem;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 6px rgba(168, 44, 59, 0.25);
+            cursor: pointer;
+        }
+        .joystick-stop:active { transform: scale(0.96); }
+        .joystick-arm-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            background-color: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            font-size: .9rem;
+        }
+        .joystick-arm-bar .arm-status { color: var(--text-secondary); }
+        .joystick-arm-bar .arm-status.armed   { color: var(--accent-success); font-weight: 600; }
+        .joystick-arm-bar .arm-status.error   { color: var(--accent-danger);  font-weight: 600; }
+        .joystick-arm-bar .arm-status.warning { color: var(--accent-warning); font-weight: 600; }
+        .joystick-arm-btn {
+            border: 1px solid var(--accent-primary);
+            background: transparent;
+            color: var(--accent-primary);
+            padding: 4px 14px;
+            border-radius: 4px;
+            font-size: .85rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .joystick-arm-btn.armed { background: var(--accent-primary); color: #fff; }
+        .joystick-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: .75rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        @media (max-width: 575.98px) {
+            .joystick-zone { width: 165px; height: 165px; }
+            .joystick-stop { width: 100px; height: 100px; font-size: 1.05rem; }
+            .joystick-row { padding: 8px 0; gap: 10px; }
+        }
+
+        {% block extra_css %}{% endblock %}
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{% url 'teleop' %}">
+                <i class="fas fa-robot me-2"></i><span class="brand-long">AMR Control</span>
+            </a>
+            <ul class="navbar-nav d-flex flex-row me-auto ms-2">
+                <li class="nav-item"><a class="nav-link{% if active_page == 'teleop' %} active{% endif %}"     href="{% url 'teleop' %}">Teleop</a></li>
+                <li class="nav-item"><a class="nav-link{% if active_page == 'mission' %} active{% endif %}"    href="{% url 'mission' %}">Mission</a></li>
+                <li class="nav-item"><a class="nav-link{% if active_page == 'navigation' %} active{% endif %}" href="{% url 'navigation' %}">Navigation</a></li>
+                <li class="nav-item"><a class="nav-link{% if active_page == 'logs' %} active{% endif %}"       href="{% url 'logs' %}">Logs</a></li>
+            </ul>
+            <div class="d-flex align-items-center">
+                <span id="robot-state-badge" class="state-badge state-unknown me-2">unknown</span>
+                <span class="status-indicator status-disconnected" id="connection-status" title="MQTT"></span>
+                <span class="text-light d-none d-md-inline" id="connection-text">Disconnected</span>
+                <div class="btn-group ms-2">
+                    <button type="button" class="btn btn-danger btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="Power options">
+                        <i class="fas fa-power-off"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item text-danger" href="#" id="powerMenuShutdown"><i class="fas fa-stop-circle me-2"></i>Shutdown</a></li>
+                        <li><a class="dropdown-item"             href="#" id="powerMenuRestart"><i class="fas fa-rotate-right me-2"></i>Restart</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hidden form to ensure CSRF cookie is set -->
+    <form id="csrf-form" style="display:none;">{% csrf_token %}</form>
+
+    <!-- Toast container for notifications -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="5000">
+                    <div class="toast-header {% if message.tags == 'success' %}bg-success text-white{% elif message.tags == 'error' %}bg-danger text-white{% else %}bg-primary text-white{% endif %}">
+                        <i class="fas {% if message.tags == 'success' %}fa-check-circle{% elif message.tags == 'error' %}fa-exclamation-circle{% else %}fa-info-circle{% endif %} me-2"></i>
+                        <strong class="me-auto">{{ message.tags|title }}</strong>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">{{ message }}</div>
+                </div>
+            {% endfor %}
+        {% endif %}
+    </div>
+
+    <!-- E-Stop banner (hidden by default; shared so it can show on any page) -->
+    <div id="estop-banner" class="container mt-2" style="display:none;">
+        <div class="alert alert-danger d-flex align-items-center mb-0 py-2" role="alert">
+            <i class="fas fa-exclamation-triangle fa-lg me-3"></i>
+            <div><strong>EMERGENCY STOP ACTIVE</strong>
+                <span id="estop-reason" class="ms-2 text-danger-emphasis"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mt-3">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Touch-Joystick Teleop -->
+    <script src="{% static 'amr_control/vendor/nipplejs.min.js' %}"></script>
+    <script src="{% static 'amr_control/js/joystick_teleop.js' %}"></script>
+
+    <script>
+        // ── Toast init + shared helpers ──────────────────────────────────
+        document.addEventListener('DOMContentLoaded', function () {
+            const toastElList = [].slice.call(document.querySelectorAll('.toast'));
+            toastElList.map(t => new bootstrap.Toast(t)).forEach(t => t.show());
+            if (typeof fetchMapData === 'function') fetchMapData();
+        });
+
+        function getCookie(name) {
+            const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'));
+            return m ? decodeURIComponent(m[1]) : null;
+        }
+
+        // ── Robot state badge (in navbar — present on every page) ───────
+        const robotStateBadge = document.getElementById('robot-state-badge');
+        const STATE_LABELS = {
+            'unknown':       'Unknown',
+            'initializing':  'Initializing…',
+            'driver_error':  'DRIVER ERROR',
+            'idle':          'Idle',
+            'moving':        'Moving',
+            'emergency_stop': 'EMERGENCY STOP',
+        };
+        const MOTOR_STATE_LABEL = {
+            'initialized': 'OK', 'idle': 'Idle',
+            'low_voltage': 'LOW VOLT', 'error': 'ERROR', '': '…',
+        };
+        function motorClass(s) {
+            if (s === 'initialized') return 'motor-ok';
+            if (s === 'idle') return 'motor-idle';
+            if (s === 'low_voltage' || s === 'error') return 'motor-warn';
+            return 'motor-init';
+        }
+        function updateMotorGrid(names, states) {
+            const motorPanel = document.getElementById('motor-status-panel');
+            const motorGrid  = document.getElementById('motor-status-grid');
+            const estopReason = document.getElementById('estop-reason');
+            if (!motorPanel || !motorGrid) return;
+            if (!names || names.length === 0) { motorPanel.style.display = 'none'; return; }
+            motorPanel.style.display = '';
+            motorGrid.innerHTML = '';
+            names.forEach(function (name, i) {
+                const st = states[i] || '';
+                const span = document.createElement('span');
+                span.className = 'motor-badge ' + motorClass(st);
+                span.textContent = name.replace('_', ' ') + ': ' + (MOTOR_STATE_LABEL[st] || st);
+                motorGrid.appendChild(span);
+            });
+            const lowVoltMotors = names.filter((_, i) => states[i] === 'low_voltage');
+            if (estopReason) {
+                estopReason.textContent = lowVoltMotors.length
+                    ? '— Low voltage on: ' + lowVoltMotors.map(n => n.replace('_', ' ')).join(', ')
+                    : '';
+            }
+        }
+        function updateStateBadge(state, driverNames, driverStates) {
+            if (!robotStateBadge) return;
+            robotStateBadge.textContent = STATE_LABELS[state] || state;
+            robotStateBadge.className = 'state-badge state-' + (state || 'unknown');
+            const resetBtn = document.getElementById('reset-btn');
+            if (resetBtn) resetBtn.disabled = (state !== 'emergency_stop');
+            const estopBanner = document.getElementById('estop-banner');
+            if (estopBanner) estopBanner.style.display = (state === 'emergency_stop') ? '' : 'none';
+            updateMotorGrid(driverNames || [], driverStates || []);
+        }
+
+        // ── Mission form AJAX (only on /mission) ────────────────────────
+        const missionForm = document.getElementById('mission-form');
+        if (missionForm) {
+            missionForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                const formData = new FormData(missionForm);
+                if (e.submitter) formData.set(e.submitter.name, e.submitter.value);
+                fetch(missionForm.action, {
+                    method: 'POST', body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                .then(r => r.json()).then(data => showToast(data.status === 'success', data.message))
+                .catch(err => console.error('Mission form error:', err));
+            });
+        }
+
+        // ── SSE freshness dot (on /teleop) ──────────────────────────────
+        let lastSseAt = null;
+        function updateSseFreshness() {
+            const dot  = document.getElementById('sse-status-dot');
+            const text = document.getElementById('sse-status-text');
+            if (!dot || !text) return;
+            if (lastSseAt === null) {
+                dot.className = 'status-indicator status-disconnected';
+                text.textContent = 'Warte auf Daten…';
+                return;
+            }
+            const ageMs = Date.now() - lastSseAt;
+            const ageS  = Math.max(0, Math.round(ageMs / 1000));
+            let label, cls;
+            if      (ageMs <  3000) { label = 'Live · vor ' + ageS + ' s';      cls = 'status-connected';    }
+            else if (ageMs < 10000) { label = 'Verzögert · vor ' + ageS + ' s'; cls = 'status-warning';      }
+            else                    { label = 'Stale · vor ' + ageS + ' s';    cls = 'status-disconnected'; }
+            dot.className = 'status-indicator ' + cls;
+            text.textContent = label;
+        }
+        setInterval(updateSseFreshness, 1000);
+
+        // ── Local time (on /teleop) ─────────────────────────────────────
+        function updateLocalTime() {
+            const el = document.getElementById('local-time');
+            if (el) el.textContent = new Date().toLocaleTimeString();
+        }
+        setInterval(updateLocalTime, 1000);
+        updateLocalTime();
+
+        // ── Telemetry panel updaters ────────────────────────────────────
+        const NAV_STATUS_STYLES = {
+            'idle':       ['state-idle',           'Idle'],
+            'navigating': ['state-moving',         'Navigating'],
+            'canceling':  ['state-initializing',   'Canceling…'],
+            'canceled':   ['state-unknown',        'Canceled'],
+            'aborted':    ['state-emergency_stop', 'Aborted'],
+            'succeeded':  ['state-moving',         'Succeeded'],
+        };
+        function updateNavStatus(status) {
+            const navStatusBadge = document.getElementById('nav-status-badge');
+            if (!navStatusBadge || !status) return;
+            const entry = NAV_STATUS_STYLES[status] || ['state-unknown', status];
+            navStatusBadge.className = 'state-badge ' + entry[0];
+            navStatusBadge.textContent = entry[1];
+        }
+
+        function classify(value, buckets) {
+            for (const b of buckets) { if (value <= b.upTo) return b; }
+            return buckets[buckets.length - 1];
+        }
+        const CPU_BUCKETS = [
+            {upTo: 30, label: 'Niedrig',  cls: 'text-muted'},
+            {upTo: 60, label: 'Normal',   cls: 'text-success'},
+            {upTo: 85, label: 'Erhöht',   cls: 'text-warning'},
+            {upTo: Infinity, label: 'Kritisch', cls: 'text-danger'},
+        ];
+        const MEM_BUCKETS = [
+            {upTo: 50, label: 'Niedrig',  cls: 'text-muted'},
+            {upTo: 75, label: 'Normal',   cls: 'text-success'},
+            {upTo: 90, label: 'Voll',     cls: 'text-warning'},
+            {upTo: Infinity, label: 'Kritisch', cls: 'text-danger'},
+        ];
+        const DISK_BUCKETS = [
+            {upTo: 70, label: 'Genug Platz', cls: 'text-success'},
+            {upTo: 85, label: 'Mäßig voll',  cls: 'text-warning'},
+            {upTo: 95, label: 'Knapp',       cls: 'text-warning'},
+            {upTo: Infinity, label: 'Kritisch', cls: 'text-danger'},
+        ];
+        const TEMP_BUCKETS = [
+            {upTo: 45, label: 'Kühl',   cls: 'text-muted'},
+            {upTo: 65, label: 'Normal', cls: 'text-success'},
+            {upTo: 80, label: 'Warm',   cls: 'text-warning'},
+            {upTo: Infinity, label: 'Heiß', cls: 'text-danger'},
+        ];
+        function statsRow(label, statusLabel, statusCls, tooltip) {
+            const tip = String(tooltip).replace(/"/g, '&quot;');
+            return '<div class="d-flex justify-content-between mb-1" title="' + tip +
+                   '"><small class="text-muted">' + label +
+                   '</small><small class="' + statusCls + '"><strong>' +
+                   statusLabel + '</strong></small></div>';
+        }
+        function updateSystemStats(statsRaw) {
+            const panel = document.getElementById('system-stats-panel');
+            if (!panel || !statsRaw) return;
+            let s;
+            try { s = typeof statsRaw === 'string' ? JSON.parse(statsRaw) : statsRaw; }
+            catch (e) { return; }
+            const hwModel = (s.hardware_model || '').trim();
+            const osName  = (s.os_pretty_name || '').trim();
+            const hostLabel =
+                (hwModel && osName) ? `${hwModel} — ${osName}` : (hwModel || osName);
+            const hostHtml = hostLabel
+                ? `<div class="mb-2"><small class="text-muted" title="kernel ${(s.kernel_release || '?')}">${hostLabel}</small></div>`
+                : '';
+            const cpuPct  = s.cpu_percent    || 0;
+            const memPct  = s.memory_percent || 0;
+            const diskPct = s.disk_percent   || 0;
+            const tempC   = s.temperature_c  || 0;
+            const memUsedGb   = ((s.memory_used_mb  || 0) / 1024).toFixed(1);
+            const memTotalGb  = ((s.memory_total_mb || 0) / 1024).toFixed(1);
+            const diskUsedGb  = ((s.disk_used_mb    || 0) / 1024).toFixed(1);
+            const diskTotalGb = ((s.disk_total_mb   || 0) / 1024).toFixed(1);
+            const cpuB  = classify(cpuPct,  CPU_BUCKETS);
+            const memB  = classify(memPct,  MEM_BUCKETS);
+            const diskB = classify(diskPct, DISK_BUCKETS);
+            const tempB = classify(tempC,   TEMP_BUCKETS);
+            const rows =
+                statsRow('CPU',  cpuB.label,  cpuB.cls,  'Auslastung: ' + cpuPct.toFixed(1) + ' %') +
+                statsRow('RAM',  memB.label,  memB.cls,  memUsedGb + ' / ' + memTotalGb + ' GB (' + memPct.toFixed(1) + ' %)') +
+                statsRow('Disk', diskB.label, diskB.cls, diskUsedGb + ' / ' + diskTotalGb + ' GB (' + diskPct.toFixed(1) + ' %)') +
+                statsRow('Temp', tempB.label, tempB.cls, tempC.toFixed(1) + ' °C');
+            const throttleBits   = s.throttle_bits | 0;
+            const throttleActive = !!s.throttle_active;
+            const stickyBits     = throttleBits & 0xF0000;
+            let powerLabel = 'OK', powerCls = 'text-success', powerTip = 'Keine Throttle-Events';
+            if (throttleActive) {
+                const active = [];
+                if (throttleBits & 0x1) active.push('under-voltage');
+                if (throttleBits & 0x2) active.push('freq-capped');
+                if (throttleBits & 0x4) active.push('throttled');
+                if (throttleBits & 0x8) active.push('soft-temp-limit');
+                powerLabel = 'Throttled'; powerCls = 'text-danger';
+                powerTip   = 'Aktiv: ' + active.join(', ');
+            } else if (stickyBits) {
+                const since = [];
+                if (throttleBits & 0x10000) since.push('under-voltage');
+                if (throttleBits & 0x20000) since.push('freq-cap');
+                if (throttleBits & 0x40000) since.push('throttled');
+                if (throttleBits & 0x80000) since.push('soft-temp');
+                powerLabel = 'Warnung'; powerCls = 'text-warning';
+                powerTip   = 'Seit Boot: ' + since.join(', ');
+            }
+            panel.innerHTML = hostHtml + rows + statsRow('Power', powerLabel, powerCls, powerTip);
+        }
+        const VOLTAGE_NOMINAL = 24.0;
+        function voltageBarColor(v) {
+            return v < 18.0 ? 'bg-danger' : v < 20.0 ? 'bg-warning' : 'bg-success';
+        }
+        function updateVoltage(motorFeedback) {
+            const panel = document.getElementById('voltage-bars');
+            if (!panel || !motorFeedback) return;
+            const wheels = Object.keys(motorFeedback);
+            if (wheels.length === 0) { panel.innerHTML = '<small class="text-muted">No data</small>'; return; }
+            let html = '';
+            wheels.forEach(function (wheel) {
+                const fb = motorFeedback[wheel];
+                const v = parseFloat(fb.input_voltage || 0);
+                const pct = Math.min(v / VOLTAGE_NOMINAL * 100, 100);
+                html += `<div class="mb-1"><small>${wheel.replace(/_/g, ' ')}: <strong>${v.toFixed(1)} V</strong></small>
+                    <div class="progress" style="height:6px;"><div class="progress-bar ${voltageBarColor(v)}" style="width:${pct}%"></div></div></div>`;
+            });
+            panel.innerHTML = html;
+        }
+        function updateMotorVelocity(motorFeedback) {
+            const panel = document.getElementById('motor-velocity-panel');
+            if (!panel || !motorFeedback) return;
+            const wheels = Object.keys(motorFeedback);
+            if (wheels.length === 0) { panel.innerHTML = '<small class="text-muted">No data</small>'; return; }
+            const MAX_VEL = 2000;
+            let html = '';
+            wheels.forEach(function (wheel) {
+                const fb = motorFeedback[wheel];
+                const vel = parseFloat(fb.current_velocity || 0);
+                const pct = Math.min(Math.abs(vel) / MAX_VEL * 100, 100);
+                const color = vel !== 0 ? 'bg-primary' : 'bg-secondary';
+                html += `<div class="mb-1"><small>${wheel.replace(/_/g, ' ')}: <strong>${vel.toFixed(0)}</strong></small>
+                    <div class="progress" style="height:6px;"><div class="progress-bar ${color}" style="width:${pct}%"></div></div></div>`;
+            });
+            panel.innerHTML = html;
+        }
+
+        // ── Velocity + Position fields (on /navigation) ─────────────────
+        function updateVelocityFields(d) {
+            const linearX  = document.getElementById('linear-x');
+            const linearY  = document.getElementById('linear-y');
+            const angularZ = document.getElementById('angular-z');
+            if (linearX)  linearX.textContent  = parseFloat(d.linear.x).toFixed(2);
+            if (linearY)  linearY.textContent  = parseFloat(d.linear.y).toFixed(2);
+            if (angularZ) angularZ.textContent = parseFloat(d.angular.z).toFixed(2);
+            const lxP = document.getElementById('linear-x-progress');
+            const lyP = document.getElementById('linear-y-progress');
+            const azP = document.getElementById('angular-z-progress');
+            const maxLin = 2.0, maxAng = 1.0;
+            if (lxP) { lxP.style.width = Math.min(Math.abs(d.linear.x / maxLin * 100), 100) + '%';
+                       lxP.className   = parseFloat(d.linear.x) >= 0 ? 'progress-bar bg-success' : 'progress-bar bg-danger'; }
+            if (lyP) { lyP.style.width = Math.min(Math.abs(d.linear.y / maxLin * 100), 100) + '%';
+                       lyP.className   = parseFloat(d.linear.y) >= 0 ? 'progress-bar bg-success' : 'progress-bar bg-danger'; }
+            if (azP) { azP.style.width = Math.min(Math.abs(d.angular.z / maxAng * 100), 100) + '%';
+                       azP.className   = parseFloat(d.angular.z) >= 0 ? 'progress-bar bg-info' : 'progress-bar bg-warning'; }
+        }
+        function updatePositionFields(d) {
+            const positionX    = document.getElementById('position-x');
+            const positionY    = document.getElementById('position-y');
+            const orientationZ = document.getElementById('orientation-z');
+            const orientationArrow = document.getElementById('orientation-arrow');
+            if (positionX)    positionX.textContent    = parseFloat(d.position.x).toFixed(2);
+            if (positionY)    positionY.textContent    = parseFloat(d.position.y).toFixed(2);
+            if (orientationZ) orientationZ.textContent = parseFloat(d.orientation.z).toFixed(2);
+            if (orientationArrow) {
+                const deg = parseFloat(d.orientation.z) * (180 / Math.PI);
+                orientationArrow.style.transform = `rotate(${deg}deg)`;
+            }
+            // Update map overlay if present
+            if (typeof updateRobotPosition === 'function') updateRobotPosition();
+        }
+
+        // ── Map (on /navigation) ────────────────────────────────────────
+        function fetchMapData() {
+            const mapImage = document.getElementById('map-image');
+            if (!mapImage) return;
+            const baseUrl = mapImage.getAttribute('data-base-url') || mapImage.src.split('?')[0];
+            mapImage.src = baseUrl + '?t=' + Date.now();
+        }
+        function updateRobotPosition() {
+            // The map image is shown at object-fit:contain. We don't have a
+            // calibrated meters→pixels transform yet; keep the indicator
+            // centered until the user wires that up. (Was non-functional in
+            // the previous version too; placeholder retained.)
+        }
+
+        // ── Connection status indicator (in navbar, every page) ─────────
+        function updateConnectionStatus(connected) {
+            const dot  = document.getElementById('connection-status');
+            const text = document.getElementById('connection-text');
+            if (dot)  dot.className  = 'status-indicator ' + (connected ? 'status-connected' : 'status-disconnected');
+            if (text) text.textContent = connected ? 'Connected' : 'Disconnected';
+        }
+
+        // ── SSE message dispatch ────────────────────────────────────────
+        const eventSource = new EventSource('/mqtt_stream/');
+        eventSource.onmessage = function (event) {
+            let d;
+            try { d = JSON.parse(event.data); } catch (e) { return; }
+            updateConnectionStatus(d.mqtt_connected === true);
+            if (d.robot_state !== undefined) updateStateBadge(d.robot_state, d.driver_names, d.driver_states);
+            if (d.nav_status     !== undefined) updateNavStatus(d.nav_status);
+            if (d.system_stats   !== undefined) updateSystemStats(d.system_stats);
+            if (d.motor_feedback !== undefined) {
+                updateVoltage(d.motor_feedback);
+                updateMotorVelocity(d.motor_feedback);
+            }
+            if (d.status_update) return;
+            lastSseAt = Date.now();
+            if (d.linear      !== undefined && d.angular !== undefined) updateVelocityFields(d);
+            if (d.position    !== undefined && d.orientation !== undefined) updatePositionFields(d);
+        };
+        eventSource.onerror = function () {
+            updateConnectionStatus(false);
+            console.error('SSE error; closing stream.');
+            eventSource.close();
+        };
+
+        // ── Docker logs (on /logs) ──────────────────────────────────────
+        let logsSource = null;
+        let logsRunning = false;
+        const MAX_LOG_LINES = 500;
+        function startLogs() {
+            const logsContainer = document.getElementById('docker-logs');
+            const logsToggle    = document.getElementById('logs-toggle');
+            if (!logsContainer || !logsToggle) return;
+            if (logsSource) logsSource.close();
+            logsSource = new EventSource('/docker_logs/?container=cmexaiii-robot&tail=50');
+            logsSource.onmessage = function (event) {
+                const line = JSON.parse(event.data);
+                logsContainer.textContent += line + '\n';
+                const lines = logsContainer.textContent.split('\n');
+                if (lines.length > MAX_LOG_LINES) {
+                    logsContainer.textContent = lines.slice(-MAX_LOG_LINES).join('\n');
+                }
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+            };
+            logsSource.onerror = function () { logsContainer.textContent += '[Connection lost. Retrying...]\n'; };
+            logsRunning = true;
+            logsToggle.innerHTML = '<i class="fas fa-stop"></i> Stop';
+        }
+        function stopLogs() {
+            const logsToggle = document.getElementById('logs-toggle');
+            if (logsSource) { logsSource.close(); logsSource = null; }
+            logsRunning = false;
+            if (logsToggle) logsToggle.innerHTML = '<i class="fas fa-play"></i> Start';
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+            const logsToggle = document.getElementById('logs-toggle');
+            const logsClear  = document.getElementById('logs-clear');
+            if (logsToggle) logsToggle.addEventListener('click', function () { logsRunning ? stopLogs() : startLogs(); });
+            if (logsClear) logsClear.addEventListener('click', function () {
+                const c = document.getElementById('docker-logs');
+                if (c) c.textContent = '';
+            });
+            const refreshMap = document.getElementById('refresh-map');
+            if (refreshMap) refreshMap.addEventListener('click', fetchMapData);
+        });
+
+        // ── Power menu (in navbar) ──────────────────────────────────────
+        function showToast(ok, message) {
+            const container = document.querySelector('.toast-container');
+            if (!container) return;
+            const el = document.createElement('div');
+            el.className = 'toast';
+            el.setAttribute('role', 'alert');
+            el.setAttribute('data-bs-autohide', 'true');
+            el.setAttribute('data-bs-delay', '4000');
+            const bg = ok ? 'bg-success' : 'bg-danger';
+            const ic = ok ? 'fa-check-circle' : 'fa-exclamation-circle';
+            el.innerHTML = `
+                <div class="toast-header ${bg} text-white">
+                    <i class="fas ${ic} me-2"></i>
+                    <strong class="me-auto">${ok ? 'Success' : 'Error'}</strong>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body">${message}</div>`;
+            container.appendChild(el);
+            new bootstrap.Toast(el).show();
+        }
+        function postPower(url, confirmMsg, fallbackSuccessMsg, fallbackErrorMsg) {
+            if (!confirm(confirmMsg)) return;
+            return fetch(url, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken'), 'X-Requested-With': 'XMLHttpRequest' },
+            })
+            .then(async (r) => {
+                let data = {}; try { data = await r.json(); } catch (e) {}
+                const ok = r.ok;
+                showToast(ok, data.message || (ok ? fallbackSuccessMsg : fallbackErrorMsg));
+            })
+            .catch((err) => { console.error('Power action error:', err); alert(fallbackErrorMsg); });
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+            const ms = document.getElementById('powerMenuShutdown');
+            if (ms) ms.addEventListener('click', (e) => { e.preventDefault();
+                postPower('{% url "shutdown_pi" %}', 'Are you sure you want to shutdown the Raspberry Pi now?', 'Shutdown command sent', 'Failed to send shutdown command'); });
+            const mr = document.getElementById('powerMenuRestart');
+            if (mr) mr.addEventListener('click', (e) => { e.preventDefault();
+                postPower('{% url "restart_pi" %}', 'Are you sure you want to restart the Raspberry Pi now?', 'Restart command sent', 'Failed to send restart command'); });
+        });
+
+        {% block extra_js %}{% endblock %}
+    </script>
+</body>
+</html>

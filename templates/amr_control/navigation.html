@@ -1,0 +1,130 @@
+{% extends 'amr_control/_base.html' %}
+{% block title %}Navigation · AMR Control{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <div class="col-12 col-lg-8">
+        <div class="card h-100">
+            <div class="card-header"><i class="fas fa-map me-2"></i>2D SLAM Map</div>
+            <div class="card-body">
+                <div class="map-container" style="position: relative; width: 100%; height: 400px; background-color: var(--bg-elevated); border-radius: 5px; overflow: hidden;">
+                    <img id="map-image" data-base-url="{% url 'map_image' %}" src="{% url 'map_image' %}" alt="Map" style="width: 100%; height: 100%; object-fit: contain;" />
+                    <div id="robot-position" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px;">
+                        <i id="robot-indicator" class="fas fa-robot fa-lg" style="color: var(--accent-primary); transform: rotate(0deg);"></i>
+                    </div>
+                </div>
+                <div class="mt-3 d-flex align-items-center gap-3">
+                    <button id="refresh-map" class="btn btn-primary btn-sm">
+                        <i class="fas fa-sync-alt me-2"></i>Refresh Map
+                    </button>
+                    <span class="text-muted small">Map shows robot position and obstacles</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header"><i class="fas fa-route me-2"></i>Navigation Status</div>
+            <div class="card-body text-center">
+                <span id="nav-status-badge" class="state-badge state-unknown">idle</span>
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-header"><i class="fas fa-map-marker-alt me-2"></i>Position</div>
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <p class="mb-1 small text-muted">X</p>
+                        <p class="value-display" id="position-x">-</p>
+                        <p class="unit">m</p>
+                    </div>
+                    <div class="col-6">
+                        <p class="mb-1 small text-muted">Y</p>
+                        <p class="value-display" id="position-y">-</p>
+                        <p class="unit">m</p>
+                    </div>
+                </div>
+                <p class="mb-1 small text-muted mt-2">Orientation Z</p>
+                <p class="value-display" id="orientation-z">-</p>
+                <p class="unit">rad</p>
+                <div id="orientation-indicator" class="mt-2" style="height: 50px; background-color: var(--bg-elevated); border-radius: 5px; position: relative;">
+                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                        <i id="orientation-arrow" class="fas fa-arrow-up fa-2x" style="transform: rotate(0deg); color: var(--accent-primary);"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header"><i class="fas fa-tachometer-alt me-2"></i>Velocity</div>
+            <div class="card-body">
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <p class="mb-1 small text-muted">Linear X</p>
+                        <p class="value-display" id="linear-x">-</p>
+                        <p class="unit">m/s</p>
+                        <div class="progress"><div id="linear-x-progress" class="progress-bar bg-success" style="width: 0%"></div></div>
+                    </div>
+                    <div class="col-6">
+                        <p class="mb-1 small text-muted">Linear Y</p>
+                        <p class="value-display" id="linear-y">-</p>
+                        <p class="unit">m/s</p>
+                        <div class="progress"><div id="linear-y-progress" class="progress-bar bg-success" style="width: 0%"></div></div>
+                    </div>
+                </div>
+                <p class="mb-1 small text-muted">Angular Z</p>
+                <p class="value-display" id="angular-z">-</p>
+                <p class="unit">rad/s</p>
+                <div class="progress"><div id="angular-z-progress" class="progress-bar bg-info" style="width: 0%"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header"><i class="fas fa-map-pin me-2"></i>Pose Management</div>
+    <div class="card-body">
+        <h5 class="mb-3">Save Current Position</h5>
+        <form method="post" action="{% url 'handle_button' %}" class="row g-3 mb-4">
+            {% csrf_token %}
+            <div class="col-md-8">
+                <input type="text" class="form-control" name="pose_name" placeholder="Pose Name" required>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" name="button_type" value="save_pose" class="btn btn-success w-100">
+                    <i class="fas fa-save me-2"></i>Save Current Pose
+                </button>
+            </div>
+        </form>
+        <h5 class="mb-2">Saved Positions</h5>
+        {% if saved_poses %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr><th>Name</th><th>Position (X, Y)</th><th>Orientation</th><th>Action</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for pose in saved_poses %}
+                        <tr>
+                            <td>{{ pose.name }}</td>
+                            <td>({{ pose.position_x|floatformat:2 }}, {{ pose.position_y|floatformat:2 }})</td>
+                            <td>{{ pose.orientation_z|floatformat:2 }}</td>
+                            <td>
+                                <form method="post" action="{% url 'handle_button' %}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="pose_id" value="{{ pose.id }}">
+                                    <button type="submit" name="button_type" value="navigate_to_pose" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-route me-1"></i>Navigate
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-info">No saved poses yet. Use the form above to save the current robot position.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

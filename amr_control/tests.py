@@ -8,9 +8,41 @@ class ViewTests(TestCase):
         self.client = Client()
 
     def test_root_page_renders(self):
-        resp = self.client.get(reverse('button_page'))
+        resp = self.client.get(reverse('teleop'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'AMR Control Dashboard')
+        self.assertContains(resp, 'AMR Control')
+        self.assertContains(resp, 'joy-arm-btn')
+
+    def test_mission_page_renders(self):
+        resp = self.client.get(reverse('mission'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'mission-form')
+
+    def test_navigation_page_renders(self):
+        resp = self.client.get(reverse('navigation'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'map-image')
+        self.assertContains(resp, 'pose_name')
+
+    def test_logs_page_renders(self):
+        resp = self.client.get(reverse('logs'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'docker-logs')
+
+    def test_joystick_cmd_clamps(self):
+        with mock.patch('amr_control.views.send_movement_command', return_value=True) as send_cmd:
+            resp = self.client.post(
+                reverse('joystick_cmd'),
+                data='{"linear_x":5.0,"linear_y":-9.9,"angular_z":99}',
+                content_type='application/json',
+            )
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertEqual(data['status'], 'success')
+            self.assertEqual(data['sent']['linear_x'], 0.4)
+            self.assertEqual(data['sent']['linear_y'], -0.3)
+            self.assertEqual(data['sent']['angular_z'], 0.8)
+            send_cmd.assert_called_once_with(linear_x=0.4, linear_y=-0.3, angular_z=0.8)
 
     def test_get_map_view_returns_json(self):
         resp = self.client.get(reverse('get_map'))
