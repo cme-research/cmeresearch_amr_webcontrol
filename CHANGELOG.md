@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.2.0...jazzy-v0.3.0) (2026-06-12)
+
+
+### Neue Features
+
+* **webapp:** touch-joystick teleop + 4-page mobile-first dashboard ([#21](https://github.com/cme-research/cmeresearch_amr_webcontrol/issues/21)) ([#22](https://github.com/cme-research/cmeresearch_amr_webcontrol/issues/22)) ([8a47778](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/8a4777831094e862699f3cab2d5ab684771859a4))
+
 ## [0.2.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.1.3...jazzy-v0.2.0) (2026-06-05)
 
 
