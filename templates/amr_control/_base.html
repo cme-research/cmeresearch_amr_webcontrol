@@ -444,6 +444,9 @@
             const hostHtml = hostLabel
                 ? `<div class="mb-2"><small class="text-muted" title="kernel ${(s.kernel_release || '?')}">${hostLabel}</small></div>`
                 : '';
+            // Show technically-exact values; use bucket-driven color only for
+            // the at-a-glance signal. Bucket labels ("Normal", "Heiß", ...)
+            // move into the tooltip as supporting context.
             const cpuPct  = s.cpu_percent    || 0;
             const memPct  = s.memory_percent || 0;
             const diskPct = s.disk_percent   || 0;
@@ -456,33 +459,42 @@
             const memB  = classify(memPct,  MEM_BUCKETS);
             const diskB = classify(diskPct, DISK_BUCKETS);
             const tempB = classify(tempC,   TEMP_BUCKETS);
+            const cpuValue  = cpuPct.toFixed(1) + ' %';
+            const memValue  = memUsedGb + ' / ' + memTotalGb + ' GB · ' + memPct.toFixed(0) + ' %';
+            const diskValue = diskUsedGb + ' / ' + diskTotalGb + ' GB · ' + diskPct.toFixed(0) + ' %';
+            const tempValue = tempC.toFixed(1) + ' °C';
             const rows =
-                statsRow('CPU',  cpuB.label,  cpuB.cls,  'Auslastung: ' + cpuPct.toFixed(1) + ' %') +
-                statsRow('RAM',  memB.label,  memB.cls,  memUsedGb + ' / ' + memTotalGb + ' GB (' + memPct.toFixed(1) + ' %)') +
-                statsRow('Disk', diskB.label, diskB.cls, diskUsedGb + ' / ' + diskTotalGb + ' GB (' + diskPct.toFixed(1) + ' %)') +
-                statsRow('Temp', tempB.label, tempB.cls, tempC.toFixed(1) + ' °C');
+                statsRow('CPU',  cpuValue,  cpuB.cls,  cpuB.label) +
+                statsRow('RAM',  memValue,  memB.cls,  memB.label) +
+                statsRow('Disk', diskValue, diskB.cls, diskB.label) +
+                statsRow('Temp', tempValue, tempB.cls, tempB.label);
+            // Power's "value" is structurally the throttle state itself — keep
+            // the label-style render and put the active/sticky bit list in the
+            // tooltip for diagnosis. Bit layout: cmeresearch_msgs/SystemStats.
             const throttleBits   = s.throttle_bits | 0;
             const throttleActive = !!s.throttle_active;
             const stickyBits     = throttleBits & 0xF0000;
-            let powerLabel = 'OK', powerCls = 'text-success', powerTip = 'Keine Throttle-Events';
+            let powerValue = 'OK', powerCls = 'text-success', powerTip = 'Keine Throttle-Events';
             if (throttleActive) {
                 const active = [];
                 if (throttleBits & 0x1) active.push('under-voltage');
                 if (throttleBits & 0x2) active.push('freq-capped');
                 if (throttleBits & 0x4) active.push('throttled');
                 if (throttleBits & 0x8) active.push('soft-temp-limit');
-                powerLabel = 'Throttled'; powerCls = 'text-danger';
-                powerTip   = 'Aktiv: ' + active.join(', ');
+                powerValue = 'Throttled: ' + active.join(', ');
+                powerCls   = 'text-danger';
+                powerTip   = 'throttle_bits=0x' + throttleBits.toString(16);
             } else if (stickyBits) {
                 const since = [];
                 if (throttleBits & 0x10000) since.push('under-voltage');
                 if (throttleBits & 0x20000) since.push('freq-cap');
                 if (throttleBits & 0x40000) since.push('throttled');
                 if (throttleBits & 0x80000) since.push('soft-temp');
-                powerLabel = 'Warnung'; powerCls = 'text-warning';
-                powerTip   = 'Seit Boot: ' + since.join(', ');
+                powerValue = 'Seit Boot: ' + since.join(', ');
+                powerCls   = 'text-warning';
+                powerTip   = 'throttle_bits=0x' + throttleBits.toString(16);
             }
-            panel.innerHTML = hostHtml + rows + statsRow('Power', powerLabel, powerCls, powerTip);
+            panel.innerHTML = hostHtml + rows + statsRow('Power', powerValue, powerCls, powerTip);
         }
         const VOLTAGE_NOMINAL = 24.0;
         function voltageBarColor(v) {
