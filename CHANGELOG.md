@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.1](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.3.0...jazzy-v0.3.1) (2026-06-19)
+
+
+### Bug Fixes
+
+* **ui:** read motor velocity under the actual dict key ([f8f303c](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/f8f303c2c80fb5dd042ebe033c5962559793fc9f))
+* **ui:** read motor velocity under the actual dict key ([398d670](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/398d6709c593b8099f0ce8bd1272d099a87869ee))
+* **ui:** show actual system-pi values instead of bucket summaries ([015a21e](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/015a21efcdcd905bcd05f64d958946cdf06ab932))
+
 ## [0.3.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.2.0...jazzy-v0.3.0) (2026-06-12)
 
 
