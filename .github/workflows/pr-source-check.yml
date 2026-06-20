@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - jazzy
+      - jazzy_dev
 
 jobs:
   verify-source:
