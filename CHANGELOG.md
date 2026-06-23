@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.3.1...jazzy-v0.4.0) (2026-06-23)
+
+
+### Neue Features
+
+* **versions:** show deployed service versions in navbar ([6f900a6](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/6f900a61af573e33233d4a9b4f2626936f8292a0))
+* **versions:** show deployed service versions in navbar ([0b1a9fe](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/0b1a9fe75d4c03401615ca38bc2032db6dfcb259))
+
 ## [0.3.1](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.3.0...jazzy-v0.3.1) (2026-06-19)
 
 
