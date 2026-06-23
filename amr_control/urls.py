@@ -17,6 +17,7 @@ urlpatterns = [
     # Streams + data
     path('mqtt_stream/',   views.mqtt_stream_view,    name='mqtt_stream'),
     path('docker_logs/',   views.docker_logs_stream,  name='docker_logs'),
+    path('api/versions/',  views.versions_view,       name='versions'),
     path('get_map/',       views.get_map_view,        name='get_map'),
     path('map_image/',     views.map_image,           name='map_image'),
 
