@@ -214,6 +214,19 @@
                 <span id="robot-state-badge" class="state-badge state-unknown me-2">unknown</span>
                 <span class="status-indicator status-disconnected" id="connection-status" title="MQTT"></span>
                 <span class="text-light d-none d-md-inline" id="connection-text">Disconnected</span>
+                <div class="dropdown ms-2">
+                    <button type="button" class="btn btn-outline-light btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Service versions" id="versionMenuBtn">
+                        <i class="fas fa-code-branch me-1"></i><span id="version-badge-label">…</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end p-0" style="min-width: 18rem;">
+                        <li class="dropdown-header d-flex align-items-center justify-content-between">
+                            <span>Service versions</span>
+                            <a href="#" id="version-refresh" class="text-decoration-none small" title="Refresh"><i class="fas fa-rotate-right"></i></a>
+                        </li>
+                        <li><hr class="dropdown-divider my-1"></li>
+                        <li><div id="version-list" class="px-2 pb-2 small text-muted">Loading…</div></li>
+                    </ul>
+                </div>
                 <div class="btn-group ms-2">
                     <button type="button" class="btn btn-danger btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="Power options">
                         <i class="fas fa-power-off"></i>
@@ -702,6 +715,66 @@
             const mr = document.getElementById('powerMenuRestart');
             if (mr) mr.addEventListener('click', (e) => { e.preventDefault();
                 postPower('{% url "restart_pi" %}', 'Are you sure you want to restart the Raspberry Pi now?', 'Restart command sent', 'Failed to send restart command'); });
+        });
+
+        // ── Service versions (navbar badge + popover) ───────────────────
+        const SERVICE_LABELS = {
+            webapp:   'Webapp',
+            hardware: 'Hardware',
+            nav:      'Nav',
+            brickd:   'Brickd',
+        };
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+            }[c]));
+        }
+        function renderVersions(services) {
+            const list = document.getElementById('version-list');
+            const badge = document.getElementById('version-badge-label');
+            if (!list) return;
+            if (!services || !services.length) {
+                list.innerHTML = '<span class="text-danger">Unavailable</span>';
+                if (badge) badge.textContent = 'n/a';
+                return;
+            }
+            const webapp = services.find(s => s.service === 'webapp');
+            if (badge) badge.textContent = (webapp && webapp.version) ? webapp.version : 'n/a';
+
+            let html = '<table class="table table-sm table-dark mb-0 align-middle">';
+            services.forEach(s => {
+                const label = SERVICE_LABELS[s.service] || s.service;
+                let dotCls, stateTitle;
+                if (s.running) { dotCls = 'status-connected'; stateTitle = 'running'; }
+                else if (s.error) { dotCls = 'status-disconnected'; stateTitle = s.error; }
+                else { dotCls = 'status-disconnected'; stateTitle = 'not deployed'; }
+                const ver = s.running ? escapeHtml(s.version) : '<span class="text-muted">—</span>';
+                const sha = s.revision_short
+                    ? `<span class="text-muted ms-1" title="${escapeHtml(s.revision || '')}">${escapeHtml(s.revision_short)}</span>`
+                    : '';
+                html += `<tr>
+                    <td class="ps-2"><span class="status-indicator ${dotCls} me-1" title="${escapeHtml(stateTitle)}"></span>${escapeHtml(label)}</td>
+                    <td class="text-end pe-2">${ver}${sha}</td>
+                </tr>`;
+            });
+            html += '</table>';
+            list.innerHTML = html;
+        }
+        function loadVersions(refresh) {
+            const badge = document.getElementById('version-badge-label');
+            fetch('/api/versions/' + (refresh ? '?refresh=1' : ''))
+                .then(r => r.json())
+                .then(d => renderVersions(d.services))
+                .catch(() => {
+                    if (badge) badge.textContent = 'n/a';
+                    const list = document.getElementById('version-list');
+                    if (list) list.innerHTML = '<span class="text-danger">Unavailable</span>';
+                });
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+            loadVersions(false);
+            const refresh = document.getElementById('version-refresh');
+            if (refresh) refresh.addEventListener('click', (e) => { e.preventDefault(); loadVersions(true); });
         });
 
         {% block extra_js %}{% endblock %}

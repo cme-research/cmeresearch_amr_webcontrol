@@ -547,6 +547,17 @@ def docker_logs_stream(request):
     return StreamingHttpResponse(event_stream(), content_type='text/event-stream')
 
 
+def versions_view(request):
+    """Return the deployed version of every service container as JSON.
+
+    Read via the Docker socket (see amr_control.versions); reflects exactly
+    what is running on the robot. `?refresh=1` bypasses the short cache.
+    """
+    from .versions import get_service_versions
+    force = request.GET.get('refresh') in ('1', 'true', 'yes')
+    return JsonResponse({'services': get_service_versions(force=force)})
+
+
 def mqtt_stream_view(request):
     """Stream MQTT messages to the frontend using SSE."""
 
