@@ -30,8 +30,9 @@ import paho.mqtt.client as mqtt
 
 # Server-side velocity caps. Browser-side clamps exist too, but never trust
 # the browser — these are the authoritative limits enforced before MQTT publish.
-MAX_LINEAR_X = 0.4   # m/s, forward/backward
-MAX_LINEAR_Y = 0.3   # m/s, lateral strafe (mecanum)
+MAX_LINEAR_X = 0.31  # m/s, forward/backward (hardware ceiling: stepper
+                     # max_step_vel=8000 microsteps/s -> ~0.314 m/s wheel surface)
+MAX_LINEAR_Y = 0.3   # m/s, lateral strafe (mecanum), already under the 0.31 cap
 MAX_ANGULAR_Z = 0.8  # rad/s, yaw
 
 

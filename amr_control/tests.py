@@ -39,10 +39,10 @@ class ViewTests(TestCase):
             self.assertEqual(resp.status_code, 200)
             data = resp.json()
             self.assertEqual(data['status'], 'success')
-            self.assertEqual(data['sent']['linear_x'], 0.4)
+            self.assertEqual(data['sent']['linear_x'], 0.31)
             self.assertEqual(data['sent']['linear_y'], -0.3)
             self.assertEqual(data['sent']['angular_z'], 0.8)
-            send_cmd.assert_called_once_with(linear_x=0.4, linear_y=-0.3, angular_z=0.8)
+            send_cmd.assert_called_once_with(linear_x=0.31, linear_y=-0.3, angular_z=0.8)
 
     def test_get_map_view_returns_json(self):
         resp = self.client.get(reverse('get_map'))
