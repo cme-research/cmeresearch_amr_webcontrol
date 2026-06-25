@@ -521,7 +521,8 @@
             let html = '';
             wheels.forEach(function (wheel) {
                 const fb = motorFeedback[wheel];
-                const v = parseFloat(fb.input_voltage || 0);
+                // TinkerStepperFeedback.input_voltage is in millivolts; convert to volts.
+                const v = parseFloat(fb.input_voltage || 0) / 1000.0;
                 const pct = Math.min(v / VOLTAGE_NOMINAL * 100, 100);
                 html += `<div class="mb-1"><small>${wheel.replace(/_/g, ' ')}: <strong>${v.toFixed(1)} V</strong></small>
                     <div class="progress" style="height:6px;"><div class="progress-bar ${voltageBarColor(v)}" style="width:${pct}%"></div></div></div>`;
@@ -587,6 +588,23 @@
             if (typeof updateRobotPosition === 'function') updateRobotPosition();
         }
 
+        // ── Odometry mini-tile (on /teleop) ─────────────────────────────
+        // Fed by the same odometry SSE message as updateVelocity/PositionFields.
+        // position/orientation are the pose; linear/angular are the twist.
+        function updateOdometryTile(d) {
+            const panel = document.getElementById('odometry-panel');
+            if (!panel) return;
+            const fmt = (v) => {
+                const n = parseFloat(v);
+                return Number.isFinite(n) ? n.toFixed(2) : '—';
+            };
+            const lin = d.linear || {}, ang = d.angular || {};
+            panel.innerHTML =
+                `<small>x <strong>${fmt(d.position.x)}</strong> · y <strong>${fmt(d.position.y)}</strong> m</small>`
+              + `<small class="d-block">θ <strong>${fmt(d.orientation.z)}</strong> rad</small>`
+              + `<small class="d-block">v <strong>${fmt(lin.x)}</strong>/<strong>${fmt(lin.y)}</strong> · ω <strong>${fmt(ang.z)}</strong></small>`;
+        }
+
         // ── Map (on /navigation) ────────────────────────────────────────
         function fetchMapData() {
             const mapImage = document.getElementById('map-image');
@@ -625,7 +643,10 @@
             if (d.status_update) return;
             lastSseAt = Date.now();
             if (d.linear      !== undefined && d.angular !== undefined) updateVelocityFields(d);
-            if (d.position    !== undefined && d.orientation !== undefined) updatePositionFields(d);
+            if (d.position    !== undefined && d.orientation !== undefined) {
+                updatePositionFields(d);
+                updateOdometryTile(d);
+            }
         };
         eventSource.onerror = function () {
             updateConnectionStatus(false);
