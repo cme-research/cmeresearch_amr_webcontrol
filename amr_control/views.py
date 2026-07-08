@@ -570,9 +570,30 @@ def mqtt_stream_view(request):
             current_time = time.time()
             current_status = get_connection_status()
 
+            # Drain the whole backlog each tick and keep only the newest
+            # sample. on_message enqueues odometry at the controller's 50 Hz
+            # publish_rate, but this loop used to dequeue a single item per
+            # second (one .get() + time.sleep(1)). With an unbounded Queue the
+            # backlog grew ~49 items/s forever, so the velocity/pose panels on
+            # /navigation displayed odometry that fell progressively further
+            # behind real time — appearing frozen (and never reflecting the
+            # robot actually moving) while the queue leaked memory. Coalescing
+            # to the latest odometry sample keeps the display live and the
+            # queue empty. State carried separately in module globals
+            # (robot_state / nav_status / system_stats / motor_feedback) is
+            # re-attached below and also re-sent by the heartbeat, so dropping
+            # the older queued items loses nothing.
+            latest_any = None
+            latest_odom = None
+            while not message_queue.empty():
+                item = message_queue.get()
+                latest_any = item
+                if 'linear' in item:          # odometry sample (twist + pose)
+                    latest_odom = item
+            message = latest_odom if latest_odom is not None else latest_any
+
             # Send a message if there's one in the queue
-            if not message_queue.empty():
-                message = message_queue.get()
+            if message is not None:
                 rs = get_current_robot_state()
                 message['mqtt_connected'] = current_status
                 message.setdefault('robot_state', rs['state'])
@@ -582,8 +603,6 @@ def mqtt_stream_view(request):
                 message.setdefault('system_stats', get_system_stats())
                 message.setdefault('motor_feedback', get_motor_feedback())
                 yield f"data: {json.dumps(message)}\n\n"
-                current_size = message_queue.qsize()
-                print(f"Current size: {current_size}")
                 last_status = current_status
                 last_status_time = current_time
             # Send a status update every 5 seconds if status changed or no message was sent in the last 5 seconds
@@ -603,6 +622,6 @@ def mqtt_stream_view(request):
                 last_status = current_status
                 last_status_time = current_time
 
-            time.sleep(1)  # Prevent high CPU utilization
+            time.sleep(0.1)  # ~10 Hz: responsive display, backlog stays empty
 
     return StreamingHttpResponse(event_stream(), content_type='text/event-stream')
