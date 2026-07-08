@@ -1,5 +1,5 @@
 import paho.mqtt.client as mqtt
-from queue import Queue
+from queue import Queue, Full, Empty
 import json
 import math
 import random
@@ -8,8 +8,58 @@ import threading
 import time
 from pathlib import Path
 
-# An in-memory message queue to store MQTT messages
-message_queue = Queue()
+# Fan-out registry: one bounded queue per active SSE connection.
+#
+# Previously a single global Queue was shared by every SSE consumer, so N
+# open browser tabs stole each other's messages (each MQTT message was
+# delivered to only one of them, round-robin). Instead, every SSE connection
+# registers its own queue and MQTT callbacks broadcast to all of them, so
+# each tab sees the full stream independently. The queues are bounded and
+# drop their oldest item under backpressure, which also caps memory if a
+# consumer stalls.
+_subscribers = []
+_subscribers_lock = threading.Lock()
+_SUBSCRIBER_MAXSIZE = 100
+
+
+def register_subscriber():
+    """Register a new SSE consumer; returns its private bounded queue."""
+    q = Queue(maxsize=_SUBSCRIBER_MAXSIZE)
+    with _subscribers_lock:
+        _subscribers.append(q)
+    return q
+
+
+def unregister_subscriber(q):
+    """Drop an SSE consumer's queue when its connection closes."""
+    with _subscribers_lock:
+        try:
+            _subscribers.remove(q)
+        except ValueError:
+            pass
+
+
+def broadcast_message(message):
+    """Fan a message out to every registered SSE consumer.
+
+    Each consumer has its own bounded queue. If one is full (a slow or
+    stalled client) its oldest item is dropped to make room, so a bad
+    consumer can never block the MQTT callback thread or grow without bound.
+    """
+    with _subscribers_lock:
+        subs = list(_subscribers)
+    for q in subs:
+        try:
+            q.put_nowait(message)
+        except Full:
+            try:
+                q.get_nowait()
+            except Empty:
+                pass
+            try:
+                q.put_nowait(message)
+            except Full:
+                pass
 
 # Global variable to track connection status
 is_connected = False
@@ -226,7 +276,7 @@ def on_robot_state_message(client, userdata, msg):
             "driver_names": driver_names,
             "driver_states": driver_states,
         }
-        message_queue.put({
+        broadcast_message({
             "type": "robot_state",
             "robot_state": state,
             "robot_state_stamp": stamp,
@@ -243,7 +293,7 @@ def on_nav_status_message(client, userdata, msg):
     try:
         data = json.loads(msg.payload.decode())
         current_nav_status = data.get("data", "idle")
-        message_queue.put({"type": "nav_status", "nav_status": current_nav_status})
+        broadcast_message({"type": "nav_status", "nav_status": current_nav_status})
     except (json.JSONDecodeError, AttributeError):
         current_nav_status = msg.payload.decode()
 
@@ -252,7 +302,7 @@ def on_system_stats_message(client, userdata, msg):
     global current_system_stats
     try:
         current_system_stats = json.loads(msg.payload.decode())
-        message_queue.put({"type": "system_stats", "system_stats": current_system_stats})
+        broadcast_message({"type": "system_stats", "system_stats": current_system_stats})
     except json.JSONDecodeError:
         pass
 
@@ -341,7 +391,7 @@ def on_message(client, userdata, msg):
         }
         #filtered_message = f"header.time: {header_time}, linear.x: {linear_x}, linear.y: {linear_y}, angular.z: {angular_z}, position.x: {position_x}, position.y: {position_y}, orientation.z: {orientation_z}"
         print(filtered_data)
-        message_queue.put(filtered_data)
+        broadcast_message(filtered_data)
     except json.JSONDecodeError:
         print("Invalid JSON message received")
 
