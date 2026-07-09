@@ -18,7 +18,8 @@ def is_ajax(request):
     return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
 from django_project.mqtt_client import (
-    message_queue, get_connection_status, send_movement_command,
+    register_subscriber, unregister_subscriber, get_connection_status,
+    send_movement_command,
     send_move_base_goal, get_current_pose, get_map_data, mqtt_client,
     VELOCITY_DEFAULTS, send_robot_command, get_current_robot_state,
     get_nav_status, get_system_stats, get_motor_feedback,
@@ -563,65 +564,75 @@ def mqtt_stream_view(request):
     """Stream MQTT messages to the frontend using SSE."""
 
     def event_stream():
+        # Each SSE connection gets its own bounded queue. MQTT callbacks
+        # broadcast to every registered subscriber, so multiple browser tabs
+        # each receive the full stream instead of stealing messages from one
+        # another via a single shared queue. The queue is unregistered in the
+        # finally block when the client disconnects (the generator is closed),
+        # so subscribers don't accumulate.
+        subscriber = register_subscriber()
         last_status = None
         last_status_time = 0
 
-        while True:
-            current_time = time.time()
-            current_status = get_connection_status()
+        try:
+            while True:
+                current_time = time.time()
+                current_status = get_connection_status()
 
-            # Drain the whole backlog each tick and keep only the newest
-            # sample. on_message enqueues odometry at the controller's 50 Hz
-            # publish_rate, but this loop used to dequeue a single item per
-            # second (one .get() + time.sleep(1)). With an unbounded Queue the
-            # backlog grew ~49 items/s forever, so the velocity/pose panels on
-            # /navigation displayed odometry that fell progressively further
-            # behind real time — appearing frozen (and never reflecting the
-            # robot actually moving) while the queue leaked memory. Coalescing
-            # to the latest odometry sample keeps the display live and the
-            # queue empty. State carried separately in module globals
-            # (robot_state / nav_status / system_stats / motor_feedback) is
-            # re-attached below and also re-sent by the heartbeat, so dropping
-            # the older queued items loses nothing.
-            latest_any = None
-            latest_odom = None
-            while not message_queue.empty():
-                item = message_queue.get()
-                latest_any = item
-                if 'linear' in item:          # odometry sample (twist + pose)
-                    latest_odom = item
-            message = latest_odom if latest_odom is not None else latest_any
+                # Drain the whole backlog each tick and keep only the newest
+                # sample. on_message enqueues odometry at the controller's
+                # 50 Hz publish_rate; the display only needs the latest value,
+                # so coalescing to it keeps the panels live (rather than
+                # replaying a growing backlog) and keeps the queue near-empty.
+                # State carried separately in module globals (robot_state /
+                # nav_status / system_stats / motor_feedback) is re-attached
+                # below and also re-sent by the heartbeat, so dropping the
+                # older queued items loses nothing.
+                latest_any = None
+                latest_odom = None
+                while not subscriber.empty():
+                    item = subscriber.get()
+                    latest_any = item
+                    if 'linear' in item:      # odometry sample (twist + pose)
+                        latest_odom = item
+                message = latest_odom if latest_odom is not None else latest_any
 
-            # Send a message if there's one in the queue
-            if message is not None:
-                rs = get_current_robot_state()
-                message['mqtt_connected'] = current_status
-                message.setdefault('robot_state', rs['state'])
-                message.setdefault('driver_names', rs.get('driver_names', []))
-                message.setdefault('driver_states', rs.get('driver_states', []))
-                message.setdefault('nav_status', get_nav_status())
-                message.setdefault('system_stats', get_system_stats())
-                message.setdefault('motor_feedback', get_motor_feedback())
-                yield f"data: {json.dumps(message)}\n\n"
-                last_status = current_status
-                last_status_time = current_time
-            # Send a status update every 5 seconds if status changed or no message was sent in the last 5 seconds
-            elif current_status != last_status or (current_time - last_status_time) > 5:
-                rs = get_current_robot_state()
-                status_message = {
-                    'mqtt_connected': current_status,
-                    'status_update': True,
-                    'robot_state': rs['state'],
-                    'driver_names': rs.get('driver_names', []),
-                    'driver_states': rs.get('driver_states', []),
-                    'nav_status': get_nav_status(),
-                    'system_stats': get_system_stats(),
-                    'motor_feedback': get_motor_feedback(),
-                }
-                yield f"data: {json.dumps(status_message)}\n\n"
-                last_status = current_status
-                last_status_time = current_time
+                # Send a message if there's one in the queue
+                if message is not None:
+                    # Copy before mutating: the same dict object is broadcast
+                    # to every subscriber, so adding keys must not touch the
+                    # shared instance.
+                    message = dict(message)
+                    rs = get_current_robot_state()
+                    message['mqtt_connected'] = current_status
+                    message.setdefault('robot_state', rs['state'])
+                    message.setdefault('driver_names', rs.get('driver_names', []))
+                    message.setdefault('driver_states', rs.get('driver_states', []))
+                    message.setdefault('nav_status', get_nav_status())
+                    message.setdefault('system_stats', get_system_stats())
+                    message.setdefault('motor_feedback', get_motor_feedback())
+                    yield f"data: {json.dumps(message)}\n\n"
+                    last_status = current_status
+                    last_status_time = current_time
+                # Send a status update every 5 seconds if status changed or no message was sent in the last 5 seconds
+                elif current_status != last_status or (current_time - last_status_time) > 5:
+                    rs = get_current_robot_state()
+                    status_message = {
+                        'mqtt_connected': current_status,
+                        'status_update': True,
+                        'robot_state': rs['state'],
+                        'driver_names': rs.get('driver_names', []),
+                        'driver_states': rs.get('driver_states', []),
+                        'nav_status': get_nav_status(),
+                        'system_stats': get_system_stats(),
+                        'motor_feedback': get_motor_feedback(),
+                    }
+                    yield f"data: {json.dumps(status_message)}\n\n"
+                    last_status = current_status
+                    last_status_time = current_time
 
-            time.sleep(0.1)  # ~10 Hz: responsive display, backlog stays empty
+                time.sleep(0.1)  # ~10 Hz: responsive display, queue stays empty
+        finally:
+            unregister_subscriber(subscriber)
 
     return StreamingHttpResponse(event_stream(), content_type='text/event-stream')
