@@ -1,5 +1,5 @@
 import paho.mqtt.client as mqtt
-from queue import Queue
+from queue import Queue, Full, Empty
 import json
 import math
 import random
@@ -8,8 +8,58 @@ import threading
 import time
 from pathlib import Path
 
-# An in-memory message queue to store MQTT messages
-message_queue = Queue()
+# Fan-out registry: one bounded queue per active SSE connection.
+#
+# Previously a single global Queue was shared by every SSE consumer, so N
+# open browser tabs stole each other's messages (each MQTT message was
+# delivered to only one of them, round-robin). Instead, every SSE connection
+# registers its own queue and MQTT callbacks broadcast to all of them, so
+# each tab sees the full stream independently. The queues are bounded and
+# drop their oldest item under backpressure, which also caps memory if a
+# consumer stalls.
+_subscribers = []
+_subscribers_lock = threading.Lock()
+_SUBSCRIBER_MAXSIZE = 100
+
+
+def register_subscriber():
+    """Register a new SSE consumer; returns its private bounded queue."""
+    q = Queue(maxsize=_SUBSCRIBER_MAXSIZE)
+    with _subscribers_lock:
+        _subscribers.append(q)
+    return q
+
+
+def unregister_subscriber(q):
+    """Drop an SSE consumer's queue when its connection closes."""
+    with _subscribers_lock:
+        try:
+            _subscribers.remove(q)
+        except ValueError:
+            pass
+
+
+def broadcast_message(message):
+    """Fan a message out to every registered SSE consumer.
+
+    Each consumer has its own bounded queue. If one is full (a slow or
+    stalled client) its oldest item is dropped to make room, so a bad
+    consumer can never block the MQTT callback thread or grow without bound.
+    """
+    with _subscribers_lock:
+        subs = list(_subscribers)
+    for q in subs:
+        try:
+            q.put_nowait(message)
+        except Full:
+            try:
+                q.get_nowait()
+            except Empty:
+                pass
+            try:
+                q.put_nowait(message)
+            except Full:
+                pass
 
 # Global variable to track connection status
 is_connected = False
@@ -22,6 +72,7 @@ ROBOT_STATE_TOPIC = "robot_state"
 ROBOT_CMD_TOPIC = "robot_cmd"
 NAV_STATUS_TOPIC = "navigation/status"
 SYSTEM_STATS_TOPIC = "system/stats"
+POSE_TOPIC = "base/robot_pose"
 MOTOR_FEEDBACK_TOPICS = {
     "front_left": "base/front_left/feedback",
     "front_right": "base/front_right/feedback",
@@ -36,6 +87,13 @@ current_pose = {
 }
 
 current_nav_status = "idle"
+# Live NavigateToPose feedback (all zero unless navigating).
+current_nav_feedback = {
+    "distance_remaining": 0.0,
+    "estimated_time_remaining": 0.0,
+    "navigation_time": 0.0,
+    "number_of_recoveries": 0,
+}
 current_system_stats = {}
 current_motor_feedback = {
     "front_left": {}, "front_right": {}, "rear_left": {}, "rear_right": {}
@@ -77,6 +135,7 @@ def on_connect(client, userdata, flags, rc):
         client.subscribe(ROBOT_STATE_TOPIC)
         client.subscribe(NAV_STATUS_TOPIC)
         client.subscribe(SYSTEM_STATS_TOPIC)
+        client.subscribe(POSE_TOPIC)
         for topic in MOTOR_FEEDBACK_TOPICS.values():
             client.subscribe(topic)
     except Exception as e:
@@ -226,7 +285,7 @@ def on_robot_state_message(client, userdata, msg):
             "driver_names": driver_names,
             "driver_states": driver_states,
         }
-        message_queue.put({
+        broadcast_message({
             "type": "robot_state",
             "robot_state": state,
             "robot_state_stamp": stamp,
@@ -239,20 +298,34 @@ def on_robot_state_message(client, userdata, msg):
 
 
 def on_nav_status_message(client, userdata, msg):
-    global current_nav_status
+    global current_nav_status, current_nav_feedback
     try:
         data = json.loads(msg.payload.decode())
-        current_nav_status = data.get("data", "idle")
-        message_queue.put({"type": "nav_status", "nav_status": current_nav_status})
     except (json.JSONDecodeError, AttributeError):
         current_nav_status = msg.payload.decode()
+        broadcast_message({"type": "nav_status", "nav_status": current_nav_status})
+        return
+    # Typed cmeresearch_msgs/NavStatus uses "status" + feedback fields; the
+    # legacy std_msgs/String bridge used "data". Accept both.
+    current_nav_status = data.get("status", data.get("data", "idle"))
+    current_nav_feedback = {
+        "distance_remaining": data.get("distance_remaining", 0.0),
+        "estimated_time_remaining": data.get("estimated_time_remaining", 0.0),
+        "navigation_time": data.get("navigation_time", 0.0),
+        "number_of_recoveries": data.get("number_of_recoveries", 0),
+    }
+    broadcast_message({
+        "type": "nav_status",
+        "nav_status": current_nav_status,
+        "nav_feedback": current_nav_feedback,
+    })
 
 
 def on_system_stats_message(client, userdata, msg):
     global current_system_stats
     try:
         current_system_stats = json.loads(msg.payload.decode())
-        message_queue.put({"type": "system_stats", "system_stats": current_system_stats})
+        broadcast_message({"type": "system_stats", "system_stats": current_system_stats})
     except json.JSONDecodeError:
         pass
 
@@ -276,6 +349,10 @@ def get_nav_status():
     return current_nav_status
 
 
+def get_nav_feedback():
+    return current_nav_feedback
+
+
 def get_system_stats():
     return current_system_stats
 
@@ -294,56 +371,72 @@ def get_map_data():
     return map_data
 
 
+# The mecanum controller publishes odometry at ~50 Hz, but the SSE consumer
+# (mqtt_stream_view) only drains its queue at ~10 Hz. Forwarding every sample
+# keeps the bounded per-client queue permanently full, so the browser is served
+# the *oldest* retained sample — velocity/pose end up lagging ~1-2 s behind the
+# robot. Throttle the odometry broadcast to match the consumer rate.
+_ODOM_BROADCAST_MIN_INTERVAL = 0.1  # seconds -> ~10 Hz
+_last_odom_broadcast = 0.0
+
+
 def on_message(client, userdata, msg):
-    #print(f"Received message: {msg.payload.decode()}")
+    # Default handler: this fires for the odometry subscription
+    # (mqtt.subscribe_topic, e.g. cmeresearch/cmexaiii-001/base/odometry).
+    # Provides the *measured* velocity twist from nav_msgs/Odometry (NOT
+    # cmd_vel). The Position tile is driven separately by on_pose_message
+    # (map-frame pose), because odometry is in the drifting odom frame.
+    global _last_odom_broadcast
     try:
         data = json.loads(msg.payload.decode())
 
+        # nav_msgs/Odometry: twist.twist is the body-frame velocity.
         linear_x = data.get("twist", {}).get("twist", {}).get("linear", {}).get("x", 0.0)
         linear_y = data.get("twist", {}).get("twist", {}).get("linear", {}).get("y", 0.0)
         angular_z = data.get("twist", {}).get("twist", {}).get("angular", {}).get("z", 0.0)
 
-        position_x = data.get("pose", {}).get("pose", {}).get("position", {}).get("x", 0.0)
-        position_y = data.get("pose", {}).get("pose", {}).get("position", {}).get("y", 0.0)
-        orientation_z = data.get("pose", {}).get("pose", {}).get("orientation", {}).get("z", 0.0)
-        header_time = data.get("header", {}).get("stamp", {}).get("secs", 0.0)
+        # Throttle the SSE broadcast to ~10 Hz to avoid flooding the queue.
+        now = time.time()
+        if now - _last_odom_broadcast < _ODOM_BROADCAST_MIN_INTERVAL:
+            return
+        _last_odom_broadcast = now
 
-        # Update the current pose global variable
-        global current_pose
-        current_pose = {
-            "position": {
-                "x": position_x,
-                "y": position_y
-            },
-            "orientation": {
-                "z": orientation_z
-            }
-        }
-
-        filtered_data = {
-            "header": {
-                "time": header_time,
-            },
-            "linear": {
-                "x": linear_x,
-                "y": linear_y,
-            },
-            "angular": {
-                "z": angular_z,
-            },
-            "position": {
-                "x": position_x,
-                "y": position_y,
-            },
-            "orientation": {
-                "z": orientation_z
-            }
-        }
-        #filtered_message = f"header.time: {header_time}, linear.x: {linear_x}, linear.y: {linear_y}, angular.z: {angular_z}, position.x: {position_x}, position.y: {position_y}, orientation.z: {orientation_z}"
-        print(filtered_data)
-        message_queue.put(filtered_data)
+        broadcast_message({
+            "linear": {"x": linear_x, "y": linear_y},
+            "angular": {"z": angular_z},
+        })
     except json.JSONDecodeError:
         print("Invalid JSON message received")
+
+
+def on_pose_message(client, userdata, msg):
+    # Map-frame robot pose from cmeresearch_robot_state/map_pose_node, bridged to
+    # the configured pose topic (e.g. cmeresearch/cmexaiii-001/base/robot_pose).
+    # geometry_msgs/PoseStamped -> Position tile + the pose used by "save pose".
+    # This is the robot's true pose on the map (valid in mapping and
+    # localization modes), unlike the drifting odometry pose.
+    global current_pose
+    try:
+        data = json.loads(msg.payload.decode())
+    except (json.JSONDecodeError, AttributeError):
+        return
+    pose = data.get("pose", {})
+    position = pose.get("position", {})
+    q = pose.get("orientation", {})
+    px = position.get("x", 0.0)
+    py = position.get("y", 0.0)
+    # Quaternion -> yaw (rotation about z); this is what the tile shows as rad.
+    qx = q.get("x", 0.0)
+    qy = q.get("y", 0.0)
+    qz = q.get("z", 0.0)
+    qw = q.get("w", 1.0)
+    yaw = math.atan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
+
+    current_pose = {"position": {"x": px, "y": py}, "orientation": {"z": yaw}}
+    broadcast_message({
+        "position": {"x": px, "y": py},
+        "orientation": {"z": yaw},
+    })
 
 
 # Set up the MQTT client
@@ -354,6 +447,7 @@ mqtt_client.on_message = on_message
 mqtt_client.message_callback_add(ROBOT_STATE_TOPIC, on_robot_state_message)
 mqtt_client.message_callback_add(NAV_STATUS_TOPIC, on_nav_status_message)
 mqtt_client.message_callback_add(SYSTEM_STATS_TOPIC, on_system_stats_message)
+mqtt_client.message_callback_add(POSE_TOPIC, on_pose_message)
 for _wheel, _topic in MOTOR_FEEDBACK_TOPICS.items():
     mqtt_client.message_callback_add(_topic, _make_motor_feedback_callback(_wheel))
 
@@ -483,6 +577,7 @@ ROBOT_STATE_TOPIC = _app_conf['topics']['robot_state']
 ROBOT_CMD_TOPIC = _app_conf['topics']['robot_cmd']
 NAV_STATUS_TOPIC = _app_conf['topics'].get('nav_status', NAV_STATUS_TOPIC)
 SYSTEM_STATS_TOPIC = _app_conf['topics'].get('system_stats', SYSTEM_STATS_TOPIC)
+POSE_TOPIC = _app_conf['topics'].get('robot_pose', POSE_TOPIC)
 _prefix = _app_conf['topics'].get('motor_feedback_prefix', 'base')
 MOTOR_FEEDBACK_TOPICS = {
     w: f"{_prefix}/{w}/feedback" for w in ("front_left", "front_right", "rear_left", "rear_right")
@@ -491,6 +586,7 @@ MOTOR_FEEDBACK_TOPICS = {
 mqtt_client.message_callback_add(ROBOT_STATE_TOPIC, on_robot_state_message)
 mqtt_client.message_callback_add(NAV_STATUS_TOPIC, on_nav_status_message)
 mqtt_client.message_callback_add(SYSTEM_STATS_TOPIC, on_system_stats_message)
+mqtt_client.message_callback_add(POSE_TOPIC, on_pose_message)
 for _wheel, _topic in MOTOR_FEEDBACK_TOPICS.items():
     mqtt_client.message_callback_add(_topic, _make_motor_feedback_callback(_wheel))
 
@@ -507,6 +603,16 @@ map_data['origin_y'] = map_conf.get('origin_y', map_data['origin_y'])
 # Obstacles: use provided list if any; otherwise leave default generation in place
 if map_conf.get('obstacles'):
     map_data['obstacles'] = map_conf['obstacles']
+
+# Identifier of the map poses are saved against, so a pose recorded on one map
+# is not silently reused on another. Configured per deployment via
+# app_config.json ("map": {"map_id": "..."}); defaults to "default".
+MAP_ID = map_conf.get('map_id', 'default')
+
+
+def get_map_id():
+    """Return the configured id of the map poses are saved against."""
+    return MAP_ID
 
 # Last Will & Testament: if this MQTT client dies ungracefully (Django crash,
 # container OOM, broker link drop), the broker publishes a zero TwistStamped

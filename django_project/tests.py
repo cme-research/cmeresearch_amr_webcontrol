@@ -66,28 +66,89 @@ class MQTTClientModuleTests(SimpleTestCase):
         self.assertIn('test_topic', subscribe_calls)
         self.assertIn('t/robot_state', subscribe_calls)
 
-    def test_on_message_updates_pose_and_queue(self):
-        # Build a fake message payload
+    def test_on_message_broadcasts_velocity_only(self):
+        # on_message (odometry) now provides velocity only; the pose comes from
+        # on_pose_message (map-frame). It must NOT broadcast position.
         payload = {
             "twist": {"twist": {"linear": {"x": 0.3, "y": -0.2}, "angular": {"z": 0.8}}},
             "pose": {"pose": {"position": {"x": 1.2, "y": 2.5}, "orientation": {"z": 0.5}}},
-            "header": {"stamp": {"secs": 123456}}
         }
         msg = mock.Mock()
         msg.payload = json.dumps(payload).encode('utf-8')
-        # Call handler
-        self.mqtt_module.on_message(self.fake_client, None, msg)
-        # Check current_pose was updated
-        pose = self.mqtt_module.get_current_pose()
-        self.assertAlmostEqual(pose['position']['x'], 1.2)
-        self.assertAlmostEqual(pose['position']['y'], 2.5)
-        self.assertAlmostEqual(pose['orientation']['z'], 0.5)
-        # Check something was put into the queue
-        q = self.mqtt_module.message_queue
-        self.assertFalse(q.empty())
-        item = q.get_nowait()
-        self.assertIn('linear', item)
-        self.assertIn('angular', item)
+        self.mqtt_module._last_odom_broadcast = 0.0  # bypass the ~10 Hz throttle
+        q = self.mqtt_module.register_subscriber()
+        try:
+            self.mqtt_module.on_message(self.fake_client, None, msg)
+            self.assertFalse(q.empty())
+            item = q.get_nowait()
+            self.assertIn('linear', item)
+            self.assertIn('angular', item)
+            self.assertNotIn('position', item)
+            self.assertAlmostEqual(item['linear']['x'], 0.3)
+            self.assertAlmostEqual(item['angular']['z'], 0.8)
+        finally:
+            self.mqtt_module.unregister_subscriber(q)
+
+    def test_on_pose_message_updates_pose_and_queue(self):
+        # base/robot_pose (map-frame PoseStamped) drives current_pose (quaternion
+        # -> yaw) and broadcasts position/orientation for the Position tile.
+        payload = {
+            "pose": {
+                "position": {"x": 1.2, "y": 2.5},
+                "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+            }
+        }
+        msg = mock.Mock()
+        msg.payload = json.dumps(payload).encode('utf-8')
+        q = self.mqtt_module.register_subscriber()
+        try:
+            self.mqtt_module.on_pose_message(self.fake_client, None, msg)
+            pose = self.mqtt_module.get_current_pose()
+            self.assertAlmostEqual(pose['position']['x'], 1.2)
+            self.assertAlmostEqual(pose['position']['y'], 2.5)
+            self.assertAlmostEqual(pose['orientation']['z'], 0.0)  # yaw of identity quat
+            self.assertFalse(q.empty())
+            item = q.get_nowait()
+            self.assertIn('position', item)
+            self.assertIn('orientation', item)
+        finally:
+            self.mqtt_module.unregister_subscriber(q)
+
+    def test_broadcast_fans_out_to_all_subscribers(self):
+        # Every registered subscriber receives its own copy of the message,
+        # instead of them competing over a single shared queue.
+        q1 = self.mqtt_module.register_subscriber()
+        q2 = self.mqtt_module.register_subscriber()
+        try:
+            self.mqtt_module.broadcast_message({"type": "x", "n": 1})
+            self.assertEqual(q1.get_nowait()["n"], 1)
+            self.assertEqual(q2.get_nowait()["n"], 1)
+        finally:
+            self.mqtt_module.unregister_subscriber(q1)
+            self.mqtt_module.unregister_subscriber(q2)
+
+    def test_unregister_stops_delivery(self):
+        q = self.mqtt_module.register_subscriber()
+        self.mqtt_module.unregister_subscriber(q)
+        self.mqtt_module.broadcast_message({"type": "x"})
+        self.assertTrue(q.empty())
+
+    def test_broadcast_drops_oldest_when_full(self):
+        # A slow consumer's bounded queue drops its oldest item under
+        # backpressure so the newest sample always lands and memory is capped.
+        q = self.mqtt_module.register_subscriber()
+        try:
+            cap = self.mqtt_module._SUBSCRIBER_MAXSIZE
+            for i in range(cap + 5):
+                self.mqtt_module.broadcast_message({"seq": i})
+            self.assertEqual(q.qsize(), cap)
+            seqs = []
+            while not q.empty():
+                seqs.append(q.get_nowait()["seq"])
+            self.assertEqual(seqs[-1], cap + 4)   # newest retained
+            self.assertNotIn(0, seqs)             # oldest dropped
+        finally:
+            self.mqtt_module.unregister_subscriber(q)
 
     def test_send_commands_publish_when_connected(self):
         # Mark client as connected

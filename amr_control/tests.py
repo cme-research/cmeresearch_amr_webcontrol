@@ -21,8 +21,69 @@ class ViewTests(TestCase):
     def test_navigation_page_renders(self):
         resp = self.client.get(reverse('navigation'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'map-image')
+        # Live SLAM map: canvas + rosbridge client, plus pose management form.
+        self.assertContains(resp, 'map-canvas')
+        self.assertContains(resp, 'rosbridge-status')
+        self.assertContains(resp, 'slam_map.js')
         self.assertContains(resp, 'pose_name')
+
+    def test_navigation_shows_nav_feedback(self):
+        # Live NavigateToPose feedback tiles (distance / ETA / recoveries).
+        resp = self.client.get(reverse('navigation'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'nav-distance-remaining')
+        self.assertContains(resp, 'nav-eta')
+        self.assertContains(resp, 'nav-recoveries')
+
+    def test_pose_message_updates_current_pose(self):
+        # base/robot_pose (map-frame PoseStamped) drives the Position tile and
+        # the pose used for saving; quaternion is converted to a yaw angle.
+        import json
+        import math
+        from django_project import mqtt_client as mc
+
+        class _Msg:
+            def __init__(self, payload):
+                self.payload = payload.encode()
+
+        # yaw = +90 deg -> quaternion z = w = sin/cos(45 deg)
+        mc.on_pose_message(None, None, _Msg(json.dumps({
+            "pose": {
+                "position": {"x": 2.0, "y": -1.0},
+                "orientation": {"x": 0.0, "y": 0.0, "z": 0.70710678, "w": 0.70710678},
+            }
+        })))
+        cp = mc.get_current_pose()
+        self.assertAlmostEqual(cp['position']['x'], 2.0)
+        self.assertAlmostEqual(cp['position']['y'], -1.0)
+        self.assertAlmostEqual(cp['orientation']['z'], math.pi / 2, places=4)
+
+    def test_navigation_suggests_pose_name(self):
+        # Empty DB -> the form suggests "Pose 1" as placeholder.
+        resp = self.client.get(reverse('navigation'))
+        self.assertContains(resp, 'placeholder="Pose 1"')
+
+    def test_save_pose_autoname_and_mapid(self):
+        from .models import RobotPose
+        from django_project.mqtt_client import get_map_id
+        # Empty name -> auto "Pose 1", with map_id captured from config.
+        resp = self.client.post(reverse('handle_button'),
+                                {'button_type': 'save_pose', 'pose_name': ''})
+        # After saving, stay on the navigation page (not teleop/button_page).
+        self.assertRedirects(resp, reverse('navigation'))
+        self.assertEqual(RobotPose.objects.count(), 1)
+        pose = RobotPose.objects.first()
+        self.assertEqual(pose.name, 'Pose 1')
+        self.assertEqual(pose.map_id, get_map_id())
+        self.assertIsNotNone(pose.created_at)
+        # Next empty save -> "Pose 2" (skips used names).
+        self.client.post(reverse('handle_button'),
+                         {'button_type': 'save_pose', 'pose_name': '   '})
+        self.assertTrue(RobotPose.objects.filter(name='Pose 2').exists())
+        # Explicit name is honoured.
+        self.client.post(reverse('handle_button'),
+                         {'button_type': 'save_pose', 'pose_name': 'Dock'})
+        self.assertTrue(RobotPose.objects.filter(name='Dock').exists())
 
     def test_logs_page_renders(self):
         resp = self.client.get(reverse('logs'))

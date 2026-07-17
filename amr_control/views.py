@@ -18,10 +18,12 @@ def is_ajax(request):
     return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
 from django_project.mqtt_client import (
-    message_queue, get_connection_status, send_movement_command,
+    register_subscriber, unregister_subscriber, get_connection_status,
+    send_movement_command,
     send_move_base_goal, get_current_pose, get_map_data, mqtt_client,
     VELOCITY_DEFAULTS, send_robot_command, get_current_robot_state,
-    get_nav_status, get_system_stats, get_motor_feedback,
+    get_nav_status, get_nav_feedback, get_system_stats, get_motor_feedback,
+    get_map_id,
 )
 from .models import RobotPose
 import json
@@ -65,6 +67,8 @@ def navigation_view(request):
     return render(request, 'amr_control/navigation.html', {
         'active_page': 'navigation',
         'saved_poses': saved_poses,
+        'suggested_pose_name': next_pose_name(),
+        'map_id': get_map_id(),
     })
 
 
@@ -111,7 +115,8 @@ def handle_button(request):
 
         # Pose management buttons
         elif button_type == 'save_pose':
-            pose_name = request.POST.get('pose_name', 'Unnamed Pose')
+            # Empty -> save_current_pose auto-generates a "Pose N" name.
+            pose_name = request.POST.get('pose_name', '')
             return save_current_pose(request, pose_name)
         elif button_type == 'navigate_to_pose':
             pose_id = request.POST.get('pose_id')
@@ -119,7 +124,7 @@ def handle_button(request):
                 return navigate_to_pose(request, pose_id)
             else:
                 messages.error(request, "No pose selected")
-                return redirect('button_page')
+                return redirect('navigation')
 
     return HttpResponse("Invalid request.", status=400)
 
@@ -354,19 +359,34 @@ def joystick_cmd(request):
     }, status=200 if ok else 503)
 
 
+def next_pose_name():
+    """Suggest the first free "Pose N" name (skips names already in use)."""
+    existing = set(RobotPose.objects.values_list('name', flat=True))
+    n = 1
+    while f"Pose {n}" in existing:
+        n += 1
+    return f"Pose {n}"
+
+
 def save_current_pose(request, pose_name):
     """
     Save the current robot pose to the database.
 
     Args:
         request: The HTTP request object
-        pose_name (str): Name for the saved pose
+        pose_name (str): Name for the saved pose. If blank, an auto-generated
+            "Pose N" name is used.
 
     Returns:
         HttpResponse: Redirect to the main page with a success message
     """
-    # Get the current pose from the MQTT client
+    # Fall back to a suggested name when the user leaves the field empty.
+    pose_name = (pose_name or "").strip() or next_pose_name()
+
+    # Capture the current *actual* pose (from odometry) and the map it belongs
+    # to, plus an automatic created_at timestamp (model default).
     current_pose = get_current_pose()
+    map_id = get_map_id()
 
     try:
         # Create a new RobotPose object
@@ -374,17 +394,18 @@ def save_current_pose(request, pose_name):
             name=pose_name,
             position_x=current_pose['position']['x'],
             position_y=current_pose['position']['y'],
-            orientation_z=current_pose['orientation']['z']
+            orientation_z=current_pose['orientation']['z'],
+            map_id=map_id,
         )
         pose.save()
         # Add success message
         messages.success(request, f"Pose '{pose_name}' saved successfully!")
-        # Redirect to the main page
-        return redirect('button_page')
+        # Stay on the navigation page (where the pose form lives).
+        return redirect('navigation')
     except Exception as e:
         print(f"Error saving pose: {e}")
         messages.error(request, f"Error saving pose: {e}")
-        return redirect('button_page')
+        return redirect('navigation')
 
 
 def navigate_to_pose(request, pose_id):
@@ -413,14 +434,14 @@ def navigate_to_pose(request, pose_id):
             messages.success(request, f"Navigating to pose '{pose.name}'")
         else:
             messages.error(request, "Failed to send navigation goal")
-        return redirect('button_page')
+        return redirect('navigation')
     except RobotPose.DoesNotExist:
         messages.error(request, "Pose not found")
-        return redirect('button_page')
+        return redirect('navigation')
     except Exception as e:
         print(f"Error navigating to pose: {e}")
         messages.error(request, f"Error navigating to pose: {e}")
-        return redirect('button_page')
+        return redirect('navigation')
 
 
 def get_map_view(request):
@@ -563,46 +584,77 @@ def mqtt_stream_view(request):
     """Stream MQTT messages to the frontend using SSE."""
 
     def event_stream():
+        # Each SSE connection gets its own bounded queue. MQTT callbacks
+        # broadcast to every registered subscriber, so multiple browser tabs
+        # each receive the full stream instead of stealing messages from one
+        # another via a single shared queue. The queue is unregistered in the
+        # finally block when the client disconnects (the generator is closed),
+        # so subscribers don't accumulate.
+        subscriber = register_subscriber()
         last_status = None
         last_status_time = 0
 
-        while True:
-            current_time = time.time()
-            current_status = get_connection_status()
+        try:
+            while True:
+                current_time = time.time()
+                current_status = get_connection_status()
 
-            # Send a message if there's one in the queue
-            if not message_queue.empty():
-                message = message_queue.get()
-                rs = get_current_robot_state()
-                message['mqtt_connected'] = current_status
-                message.setdefault('robot_state', rs['state'])
-                message.setdefault('driver_names', rs.get('driver_names', []))
-                message.setdefault('driver_states', rs.get('driver_states', []))
-                message.setdefault('nav_status', get_nav_status())
-                message.setdefault('system_stats', get_system_stats())
-                message.setdefault('motor_feedback', get_motor_feedback())
-                yield f"data: {json.dumps(message)}\n\n"
-                current_size = message_queue.qsize()
-                print(f"Current size: {current_size}")
-                last_status = current_status
-                last_status_time = current_time
-            # Send a status update every 5 seconds if status changed or no message was sent in the last 5 seconds
-            elif current_status != last_status or (current_time - last_status_time) > 5:
-                rs = get_current_robot_state()
-                status_message = {
-                    'mqtt_connected': current_status,
-                    'status_update': True,
-                    'robot_state': rs['state'],
-                    'driver_names': rs.get('driver_names', []),
-                    'driver_states': rs.get('driver_states', []),
-                    'nav_status': get_nav_status(),
-                    'system_stats': get_system_stats(),
-                    'motor_feedback': get_motor_feedback(),
-                }
-                yield f"data: {json.dumps(status_message)}\n\n"
-                last_status = current_status
-                last_status_time = current_time
+                # Drain the whole backlog each tick and keep only the newest
+                # sample. on_message enqueues odometry at the controller's
+                # 50 Hz publish_rate; the display only needs the latest value,
+                # so coalescing to it keeps the panels live (rather than
+                # replaying a growing backlog) and keeps the queue near-empty.
+                # State carried separately in module globals (robot_state /
+                # nav_status / system_stats / motor_feedback) is re-attached
+                # below and also re-sent by the heartbeat, so dropping the
+                # older queued items loses nothing.
+                latest_any = None
+                latest_odom = None
+                while not subscriber.empty():
+                    item = subscriber.get()
+                    latest_any = item
+                    if 'linear' in item:      # odometry sample (twist + pose)
+                        latest_odom = item
+                message = latest_odom if latest_odom is not None else latest_any
 
-            time.sleep(1)  # Prevent high CPU utilization
+                # Send a message if there's one in the queue
+                if message is not None:
+                    # Copy before mutating: the same dict object is broadcast
+                    # to every subscriber, so adding keys must not touch the
+                    # shared instance.
+                    message = dict(message)
+                    rs = get_current_robot_state()
+                    message['mqtt_connected'] = current_status
+                    message.setdefault('robot_state', rs['state'])
+                    message.setdefault('driver_names', rs.get('driver_names', []))
+                    message.setdefault('driver_states', rs.get('driver_states', []))
+                    message.setdefault('nav_status', get_nav_status())
+                    message.setdefault('nav_feedback', get_nav_feedback())
+                    message.setdefault('system_stats', get_system_stats())
+                    message.setdefault('motor_feedback', get_motor_feedback())
+                    yield f"data: {json.dumps(message)}\n\n"
+                    last_status = current_status
+                    last_status_time = current_time
+                # Send a status update every 5 seconds if status changed or no message was sent in the last 5 seconds
+                elif current_status != last_status or (current_time - last_status_time) > 5:
+                    rs = get_current_robot_state()
+                    status_message = {
+                        'mqtt_connected': current_status,
+                        'status_update': True,
+                        'robot_state': rs['state'],
+                        'driver_names': rs.get('driver_names', []),
+                        'driver_states': rs.get('driver_states', []),
+                        'nav_status': get_nav_status(),
+                        'nav_feedback': get_nav_feedback(),
+                        'system_stats': get_system_stats(),
+                        'motor_feedback': get_motor_feedback(),
+                    }
+                    yield f"data: {json.dumps(status_message)}\n\n"
+                    last_status = current_status
+                    last_status_time = current_time
+
+                time.sleep(0.1)  # ~10 Hz: responsive display, queue stays empty
+        finally:
+            unregister_subscriber(subscriber)
 
     return StreamingHttpResponse(event_stream(), content_type='text/event-stream')
