@@ -35,6 +35,31 @@ class ViewTests(TestCase):
         self.assertContains(resp, 'nav-eta')
         self.assertContains(resp, 'nav-recoveries')
 
+    def test_navigation_suggests_pose_name(self):
+        # Empty DB -> the form suggests "Pose 1" as placeholder.
+        resp = self.client.get(reverse('navigation'))
+        self.assertContains(resp, 'placeholder="Pose 1"')
+
+    def test_save_pose_autoname_and_mapid(self):
+        from .models import RobotPose
+        from django_project.mqtt_client import get_map_id
+        # Empty name -> auto "Pose 1", with map_id captured from config.
+        self.client.post(reverse('handle_button'),
+                         {'button_type': 'save_pose', 'pose_name': ''})
+        self.assertEqual(RobotPose.objects.count(), 1)
+        pose = RobotPose.objects.first()
+        self.assertEqual(pose.name, 'Pose 1')
+        self.assertEqual(pose.map_id, get_map_id())
+        self.assertIsNotNone(pose.created_at)
+        # Next empty save -> "Pose 2" (skips used names).
+        self.client.post(reverse('handle_button'),
+                         {'button_type': 'save_pose', 'pose_name': '   '})
+        self.assertTrue(RobotPose.objects.filter(name='Pose 2').exists())
+        # Explicit name is honoured.
+        self.client.post(reverse('handle_button'),
+                         {'button_type': 'save_pose', 'pose_name': 'Dock'})
+        self.assertTrue(RobotPose.objects.filter(name='Dock').exists())
+
     def test_logs_page_renders(self):
         resp = self.client.get(reverse('logs'))
         self.assertEqual(resp.status_code, 200)

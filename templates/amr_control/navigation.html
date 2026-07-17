@@ -98,11 +98,13 @@
 <div class="card mt-3">
     <div class="card-header"><i class="fas fa-map-pin me-2"></i>Pose Management</div>
     <div class="card-body">
-        <h5 class="mb-3">Save Current Position</h5>
+        <h5 class="mb-1">Save Current Position</h5>
+        <p class="small text-muted mb-2">Saves the robot's current pose on map
+            <span class="badge bg-secondary">{{ map_id }}</span>. Leave the name empty to use the suggestion.</p>
         <form method="post" action="{% url 'handle_button' %}" class="row g-3 mb-4">
             {% csrf_token %}
             <div class="col-md-8">
-                <input type="text" class="form-control" name="pose_name" placeholder="Pose Name" required>
+                <input type="text" class="form-control" name="pose_name" placeholder="{{ suggested_pose_name }}" maxlength="100">
             </div>
             <div class="col-md-4">
                 <button type="submit" name="button_type" value="save_pose" class="btn btn-success w-100">
@@ -115,7 +117,7 @@
             <div class="table-responsive">
                 <table class="table table-hover">
                     <thead>
-                        <tr><th>Name</th><th>Position (X, Y)</th><th>Orientation</th><th>Action</th></tr>
+                        <tr><th>Name</th><th>Position (X, Y)</th><th>Orientation</th><th>Map</th><th>Saved</th><th>Action</th></tr>
                     </thead>
                     <tbody>
                         {% for pose in saved_poses %}
@@ -123,6 +125,8 @@
                             <td>{{ pose.name }}</td>
                             <td>({{ pose.position_x|floatformat:2 }}, {{ pose.position_y|floatformat:2 }})</td>
                             <td>{{ pose.orientation_z|floatformat:2 }}</td>
+                            <td>{% if pose.map_id %}<span class="badge bg-secondary">{{ pose.map_id }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                            <td class="small text-muted">{{ pose.created_at|date:"Y-m-d H:i" }}</td>
                             <td>
                                 <form method="post" action="{% url 'handle_button' %}">
                                     {% csrf_token %}

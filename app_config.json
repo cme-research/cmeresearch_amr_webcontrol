@@ -22,6 +22,7 @@
     "rotate_ccw": 0.5
   },
   "map": {
+    "map_id": "cmexaiii_house",
     "width": 20,
     "height": 20,
     "resolution": 0.05,

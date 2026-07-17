@@ -7,6 +7,9 @@ class RobotPose(models.Model):
     position_x = models.FloatField()
     position_y = models.FloatField()
     orientation_z = models.FloatField()
+    # Id of the map this pose was captured on (poses are only valid on their
+    # own map). Blank for poses saved before this field existed.
+    map_id = models.CharField(max_length=200, default="", blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):

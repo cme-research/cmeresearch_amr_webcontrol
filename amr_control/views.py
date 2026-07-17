@@ -23,6 +23,7 @@ from django_project.mqtt_client import (
     send_move_base_goal, get_current_pose, get_map_data, mqtt_client,
     VELOCITY_DEFAULTS, send_robot_command, get_current_robot_state,
     get_nav_status, get_nav_feedback, get_system_stats, get_motor_feedback,
+    get_map_id,
 )
 from .models import RobotPose
 import json
@@ -66,6 +67,8 @@ def navigation_view(request):
     return render(request, 'amr_control/navigation.html', {
         'active_page': 'navigation',
         'saved_poses': saved_poses,
+        'suggested_pose_name': next_pose_name(),
+        'map_id': get_map_id(),
     })
 
 
@@ -112,7 +115,8 @@ def handle_button(request):
 
         # Pose management buttons
         elif button_type == 'save_pose':
-            pose_name = request.POST.get('pose_name', 'Unnamed Pose')
+            # Empty -> save_current_pose auto-generates a "Pose N" name.
+            pose_name = request.POST.get('pose_name', '')
             return save_current_pose(request, pose_name)
         elif button_type == 'navigate_to_pose':
             pose_id = request.POST.get('pose_id')
@@ -355,19 +359,34 @@ def joystick_cmd(request):
     }, status=200 if ok else 503)
 
 
+def next_pose_name():
+    """Suggest the first free "Pose N" name (skips names already in use)."""
+    existing = set(RobotPose.objects.values_list('name', flat=True))
+    n = 1
+    while f"Pose {n}" in existing:
+        n += 1
+    return f"Pose {n}"
+
+
 def save_current_pose(request, pose_name):
     """
     Save the current robot pose to the database.
 
     Args:
         request: The HTTP request object
-        pose_name (str): Name for the saved pose
+        pose_name (str): Name for the saved pose. If blank, an auto-generated
+            "Pose N" name is used.
 
     Returns:
         HttpResponse: Redirect to the main page with a success message
     """
-    # Get the current pose from the MQTT client
+    # Fall back to a suggested name when the user leaves the field empty.
+    pose_name = (pose_name or "").strip() or next_pose_name()
+
+    # Capture the current *actual* pose (from odometry) and the map it belongs
+    # to, plus an automatic created_at timestamp (model default).
     current_pose = get_current_pose()
+    map_id = get_map_id()
 
     try:
         # Create a new RobotPose object
@@ -375,7 +394,8 @@ def save_current_pose(request, pose_name):
             name=pose_name,
             position_x=current_pose['position']['x'],
             position_y=current_pose['position']['y'],
-            orientation_z=current_pose['orientation']['z']
+            orientation_z=current_pose['orientation']['z'],
+            map_id=map_id,
         )
         pose.save()
         # Add success message
