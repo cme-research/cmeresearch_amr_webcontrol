@@ -35,6 +35,29 @@ class ViewTests(TestCase):
         self.assertContains(resp, 'nav-eta')
         self.assertContains(resp, 'nav-recoveries')
 
+    def test_pose_message_updates_current_pose(self):
+        # base/robot_pose (map-frame PoseStamped) drives the Position tile and
+        # the pose used for saving; quaternion is converted to a yaw angle.
+        import json
+        import math
+        from django_project import mqtt_client as mc
+
+        class _Msg:
+            def __init__(self, payload):
+                self.payload = payload.encode()
+
+        # yaw = +90 deg -> quaternion z = w = sin/cos(45 deg)
+        mc.on_pose_message(None, None, _Msg(json.dumps({
+            "pose": {
+                "position": {"x": 2.0, "y": -1.0},
+                "orientation": {"x": 0.0, "y": 0.0, "z": 0.70710678, "w": 0.70710678},
+            }
+        })))
+        cp = mc.get_current_pose()
+        self.assertAlmostEqual(cp['position']['x'], 2.0)
+        self.assertAlmostEqual(cp['position']['y'], -1.0)
+        self.assertAlmostEqual(cp['orientation']['z'], math.pi / 2, places=4)
+
     def test_navigation_suggests_pose_name(self):
         # Empty DB -> the form suggests "Pose 1" as placeholder.
         resp = self.client.get(reverse('navigation'))

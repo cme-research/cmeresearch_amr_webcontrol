@@ -66,30 +66,51 @@ class MQTTClientModuleTests(SimpleTestCase):
         self.assertIn('test_topic', subscribe_calls)
         self.assertIn('t/robot_state', subscribe_calls)
 
-    def test_on_message_updates_pose_and_queue(self):
-        # Build a fake message payload
+    def test_on_message_broadcasts_velocity_only(self):
+        # on_message (odometry) now provides velocity only; the pose comes from
+        # on_pose_message (map-frame). It must NOT broadcast position.
         payload = {
             "twist": {"twist": {"linear": {"x": 0.3, "y": -0.2}, "angular": {"z": 0.8}}},
             "pose": {"pose": {"position": {"x": 1.2, "y": 2.5}, "orientation": {"z": 0.5}}},
-            "header": {"stamp": {"secs": 123456}}
         }
         msg = mock.Mock()
         msg.payload = json.dumps(payload).encode('utf-8')
-        # Register an SSE subscriber so the broadcast has somewhere to land.
+        self.mqtt_module._last_odom_broadcast = 0.0  # bypass the ~10 Hz throttle
         q = self.mqtt_module.register_subscriber()
         try:
-            # Call handler
             self.mqtt_module.on_message(self.fake_client, None, msg)
-            # Check current_pose was updated
-            pose = self.mqtt_module.get_current_pose()
-            self.assertAlmostEqual(pose['position']['x'], 1.2)
-            self.assertAlmostEqual(pose['position']['y'], 2.5)
-            self.assertAlmostEqual(pose['orientation']['z'], 0.5)
-            # Check the odometry sample was broadcast to the subscriber
             self.assertFalse(q.empty())
             item = q.get_nowait()
             self.assertIn('linear', item)
             self.assertIn('angular', item)
+            self.assertNotIn('position', item)
+            self.assertAlmostEqual(item['linear']['x'], 0.3)
+            self.assertAlmostEqual(item['angular']['z'], 0.8)
+        finally:
+            self.mqtt_module.unregister_subscriber(q)
+
+    def test_on_pose_message_updates_pose_and_queue(self):
+        # base/robot_pose (map-frame PoseStamped) drives current_pose (quaternion
+        # -> yaw) and broadcasts position/orientation for the Position tile.
+        payload = {
+            "pose": {
+                "position": {"x": 1.2, "y": 2.5},
+                "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+            }
+        }
+        msg = mock.Mock()
+        msg.payload = json.dumps(payload).encode('utf-8')
+        q = self.mqtt_module.register_subscriber()
+        try:
+            self.mqtt_module.on_pose_message(self.fake_client, None, msg)
+            pose = self.mqtt_module.get_current_pose()
+            self.assertAlmostEqual(pose['position']['x'], 1.2)
+            self.assertAlmostEqual(pose['position']['y'], 2.5)
+            self.assertAlmostEqual(pose['orientation']['z'], 0.0)  # yaw of identity quat
+            self.assertFalse(q.empty())
+            item = q.get_nowait()
+            self.assertIn('position', item)
+            self.assertIn('orientation', item)
         finally:
             self.mqtt_module.unregister_subscriber(q)
 

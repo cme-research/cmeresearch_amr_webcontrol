@@ -11,6 +11,7 @@
     "robot_cmd": "cmeresearch/cmexaiii-001/robot_cmd",
     "nav_status": "cmeresearch/cmexaiii-001/navigation/status",
     "system_stats": "cmeresearch/cmexaiii-001/system/stats",
+    "robot_pose": "cmeresearch/cmexaiii-001/base/robot_pose",
     "motor_feedback_prefix": "cmeresearch/cmexaiii-001/base"
   },
   "velocities": {
