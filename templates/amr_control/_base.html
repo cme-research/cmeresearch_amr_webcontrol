@@ -409,6 +409,19 @@
             navStatusBadge.textContent = entry[1];
         }
 
+        // Live NavigateToPose feedback (navigation page only). Elements are
+        // absent on other pages, so every write is guarded.
+        function updateNavFeedback(fb) {
+            if (!fb) return;
+            const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+            const dist = Number(fb.distance_remaining) || 0;
+            const eta  = Number(fb.estimated_time_remaining) || 0;
+            const rec  = Number(fb.number_of_recoveries) || 0;
+            set('nav-distance-remaining', dist > 0 ? dist.toFixed(1) : '–');
+            set('nav-eta', eta > 0 ? eta.toFixed(0) : '–');
+            set('nav-recoveries', rec);
+        }
+
         function classify(value, buckets) {
             for (const b of buckets) { if (value <= b.upTo) return b; }
             return buckets[buckets.length - 1];
@@ -635,6 +648,7 @@
             updateConnectionStatus(d.mqtt_connected === true);
             if (d.robot_state !== undefined) updateStateBadge(d.robot_state, d.driver_names, d.driver_states);
             if (d.nav_status     !== undefined) updateNavStatus(d.nav_status);
+            if (d.nav_feedback   !== undefined) updateNavFeedback(d.nav_feedback);
             if (d.system_stats   !== undefined) updateSystemStats(d.system_stats);
             if (d.motor_feedback !== undefined) {
                 updateVoltage(d.motor_feedback);

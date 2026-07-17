@@ -86,6 +86,13 @@ current_pose = {
 }
 
 current_nav_status = "idle"
+# Live NavigateToPose feedback (all zero unless navigating).
+current_nav_feedback = {
+    "distance_remaining": 0.0,
+    "estimated_time_remaining": 0.0,
+    "navigation_time": 0.0,
+    "number_of_recoveries": 0,
+}
 current_system_stats = {}
 current_motor_feedback = {
     "front_left": {}, "front_right": {}, "rear_left": {}, "rear_right": {}
@@ -289,13 +296,27 @@ def on_robot_state_message(client, userdata, msg):
 
 
 def on_nav_status_message(client, userdata, msg):
-    global current_nav_status
+    global current_nav_status, current_nav_feedback
     try:
         data = json.loads(msg.payload.decode())
-        current_nav_status = data.get("data", "idle")
-        broadcast_message({"type": "nav_status", "nav_status": current_nav_status})
     except (json.JSONDecodeError, AttributeError):
         current_nav_status = msg.payload.decode()
+        broadcast_message({"type": "nav_status", "nav_status": current_nav_status})
+        return
+    # Typed cmeresearch_msgs/NavStatus uses "status" + feedback fields; the
+    # legacy std_msgs/String bridge used "data". Accept both.
+    current_nav_status = data.get("status", data.get("data", "idle"))
+    current_nav_feedback = {
+        "distance_remaining": data.get("distance_remaining", 0.0),
+        "estimated_time_remaining": data.get("estimated_time_remaining", 0.0),
+        "navigation_time": data.get("navigation_time", 0.0),
+        "number_of_recoveries": data.get("number_of_recoveries", 0),
+    }
+    broadcast_message({
+        "type": "nav_status",
+        "nav_status": current_nav_status,
+        "nav_feedback": current_nav_feedback,
+    })
 
 
 def on_system_stats_message(client, userdata, msg):
@@ -324,6 +345,10 @@ def _make_motor_feedback_callback(wheel_name):
 
 def get_nav_status():
     return current_nav_status
+
+
+def get_nav_feedback():
+    return current_nav_feedback
 
 
 def get_system_stats():
