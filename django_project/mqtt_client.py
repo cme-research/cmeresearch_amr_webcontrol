@@ -602,6 +602,16 @@ map_data['origin_y'] = map_conf.get('origin_y', map_data['origin_y'])
 if map_conf.get('obstacles'):
     map_data['obstacles'] = map_conf['obstacles']
 
+# Identifier of the map poses are saved against, so a pose recorded on one map
+# is not silently reused on another. Configured per deployment via
+# app_config.json ("map": {"map_id": "..."}); defaults to "default".
+MAP_ID = map_conf.get('map_id', 'default')
+
+
+def get_map_id():
+    """Return the configured id of the map poses are saved against."""
+    return MAP_ID
+
 # Last Will & Testament: if this MQTT client dies ungracefully (Django crash,
 # container OOM, broker link drop), the broker publishes a zero TwistStamped
 # on cmd_vel on our behalf. twist_mux's 0.5s timeout then brakes the robot.
