@@ -22,7 +22,7 @@ from django_project.mqtt_client import (
     send_movement_command,
     send_move_base_goal, get_current_pose, get_map_data, mqtt_client,
     VELOCITY_DEFAULTS, send_robot_command, get_current_robot_state,
-    get_nav_status, get_system_stats, get_motor_feedback,
+    get_nav_status, get_nav_feedback, get_system_stats, get_motor_feedback,
 )
 from .models import RobotPose
 import json
@@ -609,6 +609,7 @@ def mqtt_stream_view(request):
                     message.setdefault('driver_names', rs.get('driver_names', []))
                     message.setdefault('driver_states', rs.get('driver_states', []))
                     message.setdefault('nav_status', get_nav_status())
+                    message.setdefault('nav_feedback', get_nav_feedback())
                     message.setdefault('system_stats', get_system_stats())
                     message.setdefault('motor_feedback', get_motor_feedback())
                     yield f"data: {json.dumps(message)}\n\n"
@@ -624,6 +625,7 @@ def mqtt_stream_view(request):
                         'driver_names': rs.get('driver_names', []),
                         'driver_states': rs.get('driver_states', []),
                         'nav_status': get_nav_status(),
+                        'nav_feedback': get_nav_feedback(),
                         'system_stats': get_system_stats(),
                         'motor_feedback': get_motor_feedback(),
                     }

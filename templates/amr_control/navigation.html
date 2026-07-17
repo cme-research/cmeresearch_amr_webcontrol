@@ -21,8 +21,27 @@
     <div class="col-12 col-lg-4">
         <div class="card mb-3">
             <div class="card-header"><i class="fas fa-route me-2"></i>Navigation Status</div>
-            <div class="card-body text-center">
-                <span id="nav-status-badge" class="state-badge state-unknown">idle</span>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <span id="nav-status-badge" class="state-badge state-unknown">idle</span>
+                </div>
+                <div class="row g-2 text-center">
+                    <div class="col-4">
+                        <p class="mb-1 small text-muted">Distance</p>
+                        <p class="value-display" id="nav-distance-remaining">–</p>
+                        <p class="unit">m</p>
+                    </div>
+                    <div class="col-4">
+                        <p class="mb-1 small text-muted">ETA</p>
+                        <p class="value-display" id="nav-eta">–</p>
+                        <p class="unit">s</p>
+                    </div>
+                    <div class="col-4">
+                        <p class="mb-1 small text-muted">Recoveries</p>
+                        <p class="value-display" id="nav-recoveries">0</p>
+                        <p class="unit">&nbsp;</p>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="card mb-3">

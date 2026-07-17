@@ -27,6 +27,14 @@ class ViewTests(TestCase):
         self.assertContains(resp, 'slam_map.js')
         self.assertContains(resp, 'pose_name')
 
+    def test_navigation_shows_nav_feedback(self):
+        # Live NavigateToPose feedback tiles (distance / ETA / recoveries).
+        resp = self.client.get(reverse('navigation'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'nav-distance-remaining')
+        self.assertContains(resp, 'nav-eta')
+        self.assertContains(resp, 'nav-recoveries')
+
     def test_logs_page_renders(self):
         resp = self.client.get(reverse('logs'))
         self.assertEqual(resp.status_code, 200)
