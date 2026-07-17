@@ -44,8 +44,10 @@ class ViewTests(TestCase):
         from .models import RobotPose
         from django_project.mqtt_client import get_map_id
         # Empty name -> auto "Pose 1", with map_id captured from config.
-        self.client.post(reverse('handle_button'),
-                         {'button_type': 'save_pose', 'pose_name': ''})
+        resp = self.client.post(reverse('handle_button'),
+                                {'button_type': 'save_pose', 'pose_name': ''})
+        # After saving, stay on the navigation page (not teleop/button_page).
+        self.assertRedirects(resp, reverse('navigation'))
         self.assertEqual(RobotPose.objects.count(), 1)
         pose = RobotPose.objects.first()
         self.assertEqual(pose.name, 'Pose 1')

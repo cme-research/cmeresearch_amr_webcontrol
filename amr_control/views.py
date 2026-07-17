@@ -124,7 +124,7 @@ def handle_button(request):
                 return navigate_to_pose(request, pose_id)
             else:
                 messages.error(request, "No pose selected")
-                return redirect('button_page')
+                return redirect('navigation')
 
     return HttpResponse("Invalid request.", status=400)
 
@@ -400,12 +400,12 @@ def save_current_pose(request, pose_name):
         pose.save()
         # Add success message
         messages.success(request, f"Pose '{pose_name}' saved successfully!")
-        # Redirect to the main page
-        return redirect('button_page')
+        # Stay on the navigation page (where the pose form lives).
+        return redirect('navigation')
     except Exception as e:
         print(f"Error saving pose: {e}")
         messages.error(request, f"Error saving pose: {e}")
-        return redirect('button_page')
+        return redirect('navigation')
 
 
 def navigate_to_pose(request, pose_id):
@@ -434,14 +434,14 @@ def navigate_to_pose(request, pose_id):
             messages.success(request, f"Navigating to pose '{pose.name}'")
         else:
             messages.error(request, "Failed to send navigation goal")
-        return redirect('button_page')
+        return redirect('navigation')
     except RobotPose.DoesNotExist:
         messages.error(request, "Pose not found")
-        return redirect('button_page')
+        return redirect('navigation')
     except Exception as e:
         print(f"Error navigating to pose: {e}")
         messages.error(request, f"Error navigating to pose: {e}")
-        return redirect('button_page')
+        return redirect('navigation')
 
 
 def get_map_view(request):
