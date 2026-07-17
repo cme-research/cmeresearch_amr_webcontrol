@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.5.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.4.0...jazzy-v0.5.0) (2026-07-17)
+
+
+### Neue Features
+
+* **navigation:** drive Position tile from map-frame robot_pose ([29c6b48](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/29c6b48931ff03caafc78ac451877104b97e9c3c))
+* **navigation:** drive Position tile from map-frame robot_pose ([ed34d9e](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/ed34d9eda79e70ce24cd39593bc5425537d64871))
+* **navigation:** live SLAM map via rosbridge WebSocket ([063a777](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/063a77737456f1804bb5430271baca5f9c7d9ba7))
+* **navigation:** live SLAM map via rosbridge WebSocket ([933752d](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/933752dbae16c46d753f62648d2477f4d3326050))
+* **navigation:** save current pose with auto-name, map_id and timestamp ([42e00d0](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/42e00d04dd35e2d3dc00bbe0049b45c9ecf7e736))
+* **navigation:** save current pose with auto-name, map_id and timestamp ([b5a31b8](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/b5a31b8684c468d0e3aaf3055285b4d1da5e8a66))
+* **navigation:** show live nav feedback (distance/ETA/recoveries) ([3441a9c](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/3441a9c4a57dfde42f0b4d995b4befe93f911b19))
+* **navigation:** show live nav feedback (distance/ETA/recoveries) ([e244774](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/e244774a35a45430ca6f3c8a77ac4b7f0c22dffd))
+* **teleop:** add live odometry mini-tile ([8759fd0](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/8759fd0e953bd269e094472a892c1eb1a2acb4fa))
+* **teleop:** add live odometry mini-tile ([6e2a56e](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/6e2a56eec9181d300bdd086db0296ac26ffca55b))
+
+
+### Bug Fixes
+
+* **navigation:** stay on navigation page after saving/navigating a pose ([20aa3d5](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/20aa3d57fdd5484d936d5c51c0c129cfd8cfe163))
+* **navigation:** stay on navigation page after saving/navigating a pose ([1204e36](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/1204e367ace08b50aa55c8874e2aa515be60eb9c))
+* **sse:** coalesce odometry backlog so velocity/pose panels stay live ([737901e](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/737901ea73d9e8bec2a7d144c3c3c5cb8d1bd436))
+* **sse:** coalesce odometry backlog so velocity/pose stay live ([749a6fd](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/749a6fd3b2ae19b74deaa46303e2b8b8f76e7c6b))
+* **sse:** give each connection its own queue so tabs stop stealing messages ([228e52f](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/228e52f510e72cda14f4530b8d272ed2dc30bc92))
+* **sse:** per-connection queues so browser tabs stop stealing each other's messages ([bfd7e31](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/bfd7e31218dd354400961a0b8ab4a2b508e16e74))
+* **teleop:** convert motor input_voltage from mV to V in voltage tile ([5a65b28](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/5a65b286e1e9413c8f0ef7efcac846b784b0746d))
+* **teleop:** lower server-side linear_x clamp to 0.31 m/s ([59a0d25](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/59a0d25229ada8a06c935b7bc795a08d6697c8ab))
+* **teleop:** lower server-side linear_x clamp to 0.31 m/s ([aa7e2b9](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/aa7e2b923b0a4b1a6f8307b8049b2c024dcd191d))
+* **teleop:** show motor voltage in volts (mV-&gt;V) in voltage tile ([9434c94](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/9434c9432dd40db9afd0ab4672ff8d55ee2b8dd2))
+* **webapp:** throttle odometry velocity so the display stays real-time ([a0d06d4](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/a0d06d433021feb81c36c09dd58ac306fa74dd5c))
+* **webapp:** throttle odometry velocity so the display stays real-time ([72177de](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/72177de2cdd4a2ec628217a5305c61a9c7bd676c))
+
 ## [0.4.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.3.1...jazzy-v0.4.0) (2026-06-23)
 
 
