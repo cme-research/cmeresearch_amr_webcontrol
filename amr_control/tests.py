@@ -21,7 +21,10 @@ class ViewTests(TestCase):
     def test_navigation_page_renders(self):
         resp = self.client.get(reverse('navigation'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'map-image')
+        # Live SLAM map: canvas + rosbridge client, plus pose management form.
+        self.assertContains(resp, 'map-canvas')
+        self.assertContains(resp, 'rosbridge-status')
+        self.assertContains(resp, 'slam_map.js')
         self.assertContains(resp, 'pose_name')
 
     def test_logs_page_renders(self):
