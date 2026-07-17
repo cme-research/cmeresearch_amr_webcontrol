@@ -72,6 +72,7 @@ ROBOT_STATE_TOPIC = "robot_state"
 ROBOT_CMD_TOPIC = "robot_cmd"
 NAV_STATUS_TOPIC = "navigation/status"
 SYSTEM_STATS_TOPIC = "system/stats"
+POSE_TOPIC = "base/robot_pose"
 MOTOR_FEEDBACK_TOPICS = {
     "front_left": "base/front_left/feedback",
     "front_right": "base/front_right/feedback",
@@ -134,6 +135,7 @@ def on_connect(client, userdata, flags, rc):
         client.subscribe(ROBOT_STATE_TOPIC)
         client.subscribe(NAV_STATUS_TOPIC)
         client.subscribe(SYSTEM_STATS_TOPIC)
+        client.subscribe(POSE_TOPIC)
         for topic in MOTOR_FEEDBACK_TOPICS.values():
             client.subscribe(topic)
     except Exception as e:
@@ -381,8 +383,10 @@ _last_odom_broadcast = 0.0
 def on_message(client, userdata, msg):
     # Default handler: this fires for the odometry subscription
     # (mqtt.subscribe_topic, e.g. cmeresearch/cmexaiii-001/base/odometry).
-    # Velocity is the *measured* twist from nav_msgs/Odometry, NOT cmd_vel.
-    global current_pose, _last_odom_broadcast
+    # Provides the *measured* velocity twist from nav_msgs/Odometry (NOT
+    # cmd_vel). The Position tile is driven separately by on_pose_message
+    # (map-frame pose), because odometry is in the drifting odom frame.
+    global _last_odom_broadcast
     try:
         data = json.loads(msg.payload.decode())
 
@@ -391,53 +395,48 @@ def on_message(client, userdata, msg):
         linear_y = data.get("twist", {}).get("twist", {}).get("linear", {}).get("y", 0.0)
         angular_z = data.get("twist", {}).get("twist", {}).get("angular", {}).get("z", 0.0)
 
-        position_x = data.get("pose", {}).get("pose", {}).get("position", {}).get("x", 0.0)
-        position_y = data.get("pose", {}).get("pose", {}).get("position", {}).get("y", 0.0)
-        orientation_z = data.get("pose", {}).get("pose", {}).get("orientation", {}).get("z", 0.0)
-        # ROS 2 builtin_interfaces/Time uses sec/nanosec (ROS 1 used secs/nsecs).
-        stamp = data.get("header", {}).get("stamp", {})
-        header_time = stamp.get("sec", 0) + stamp.get("nanosec", 0) * 1e-9
-
-        # Always keep the latest pose (used by "save current pose"), even on
-        # throttled ticks — this is cheap and must not miss updates.
-        current_pose = {
-            "position": {
-                "x": position_x,
-                "y": position_y
-            },
-            "orientation": {
-                "z": orientation_z
-            }
-        }
-
         # Throttle the SSE broadcast to ~10 Hz to avoid flooding the queue.
         now = time.time()
         if now - _last_odom_broadcast < _ODOM_BROADCAST_MIN_INTERVAL:
             return
         _last_odom_broadcast = now
 
-        filtered_data = {
-            "header": {
-                "time": header_time,
-            },
-            "linear": {
-                "x": linear_x,
-                "y": linear_y,
-            },
-            "angular": {
-                "z": angular_z,
-            },
-            "position": {
-                "x": position_x,
-                "y": position_y,
-            },
-            "orientation": {
-                "z": orientation_z
-            }
-        }
-        broadcast_message(filtered_data)
+        broadcast_message({
+            "linear": {"x": linear_x, "y": linear_y},
+            "angular": {"z": angular_z},
+        })
     except json.JSONDecodeError:
         print("Invalid JSON message received")
+
+
+def on_pose_message(client, userdata, msg):
+    # Map-frame robot pose from cmeresearch_robot_state/map_pose_node, bridged to
+    # the configured pose topic (e.g. cmeresearch/cmexaiii-001/base/robot_pose).
+    # geometry_msgs/PoseStamped -> Position tile + the pose used by "save pose".
+    # This is the robot's true pose on the map (valid in mapping and
+    # localization modes), unlike the drifting odometry pose.
+    global current_pose
+    try:
+        data = json.loads(msg.payload.decode())
+    except (json.JSONDecodeError, AttributeError):
+        return
+    pose = data.get("pose", {})
+    position = pose.get("position", {})
+    q = pose.get("orientation", {})
+    px = position.get("x", 0.0)
+    py = position.get("y", 0.0)
+    # Quaternion -> yaw (rotation about z); this is what the tile shows as rad.
+    qx = q.get("x", 0.0)
+    qy = q.get("y", 0.0)
+    qz = q.get("z", 0.0)
+    qw = q.get("w", 1.0)
+    yaw = math.atan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
+
+    current_pose = {"position": {"x": px, "y": py}, "orientation": {"z": yaw}}
+    broadcast_message({
+        "position": {"x": px, "y": py},
+        "orientation": {"z": yaw},
+    })
 
 
 # Set up the MQTT client
@@ -448,6 +447,7 @@ mqtt_client.on_message = on_message
 mqtt_client.message_callback_add(ROBOT_STATE_TOPIC, on_robot_state_message)
 mqtt_client.message_callback_add(NAV_STATUS_TOPIC, on_nav_status_message)
 mqtt_client.message_callback_add(SYSTEM_STATS_TOPIC, on_system_stats_message)
+mqtt_client.message_callback_add(POSE_TOPIC, on_pose_message)
 for _wheel, _topic in MOTOR_FEEDBACK_TOPICS.items():
     mqtt_client.message_callback_add(_topic, _make_motor_feedback_callback(_wheel))
 
@@ -577,6 +577,7 @@ ROBOT_STATE_TOPIC = _app_conf['topics']['robot_state']
 ROBOT_CMD_TOPIC = _app_conf['topics']['robot_cmd']
 NAV_STATUS_TOPIC = _app_conf['topics'].get('nav_status', NAV_STATUS_TOPIC)
 SYSTEM_STATS_TOPIC = _app_conf['topics'].get('system_stats', SYSTEM_STATS_TOPIC)
+POSE_TOPIC = _app_conf['topics'].get('robot_pose', POSE_TOPIC)
 _prefix = _app_conf['topics'].get('motor_feedback_prefix', 'base')
 MOTOR_FEEDBACK_TOPICS = {
     w: f"{_prefix}/{w}/feedback" for w in ("front_left", "front_right", "rear_left", "rear_right")
@@ -585,6 +586,7 @@ MOTOR_FEEDBACK_TOPICS = {
 mqtt_client.message_callback_add(ROBOT_STATE_TOPIC, on_robot_state_message)
 mqtt_client.message_callback_add(NAV_STATUS_TOPIC, on_nav_status_message)
 mqtt_client.message_callback_add(SYSTEM_STATS_TOPIC, on_system_stats_message)
+mqtt_client.message_callback_add(POSE_TOPIC, on_pose_message)
 for _wheel, _topic in MOTOR_FEEDBACK_TOPICS.items():
     mqtt_client.message_callback_add(_topic, _make_motor_feedback_callback(_wheel))
 
