@@ -369,11 +369,24 @@ def get_map_data():
     return map_data
 
 
+# The mecanum controller publishes odometry at ~50 Hz, but the SSE consumer
+# (mqtt_stream_view) only drains its queue at ~10 Hz. Forwarding every sample
+# keeps the bounded per-client queue permanently full, so the browser is served
+# the *oldest* retained sample — velocity/pose end up lagging ~1-2 s behind the
+# robot. Throttle the odometry broadcast to match the consumer rate.
+_ODOM_BROADCAST_MIN_INTERVAL = 0.1  # seconds -> ~10 Hz
+_last_odom_broadcast = 0.0
+
+
 def on_message(client, userdata, msg):
-    #print(f"Received message: {msg.payload.decode()}")
+    # Default handler: this fires for the odometry subscription
+    # (mqtt.subscribe_topic, e.g. cmeresearch/cmexaiii-001/base/odometry).
+    # Velocity is the *measured* twist from nav_msgs/Odometry, NOT cmd_vel.
+    global current_pose, _last_odom_broadcast
     try:
         data = json.loads(msg.payload.decode())
 
+        # nav_msgs/Odometry: twist.twist is the body-frame velocity.
         linear_x = data.get("twist", {}).get("twist", {}).get("linear", {}).get("x", 0.0)
         linear_y = data.get("twist", {}).get("twist", {}).get("linear", {}).get("y", 0.0)
         angular_z = data.get("twist", {}).get("twist", {}).get("angular", {}).get("z", 0.0)
@@ -381,10 +394,12 @@ def on_message(client, userdata, msg):
         position_x = data.get("pose", {}).get("pose", {}).get("position", {}).get("x", 0.0)
         position_y = data.get("pose", {}).get("pose", {}).get("position", {}).get("y", 0.0)
         orientation_z = data.get("pose", {}).get("pose", {}).get("orientation", {}).get("z", 0.0)
-        header_time = data.get("header", {}).get("stamp", {}).get("secs", 0.0)
+        # ROS 2 builtin_interfaces/Time uses sec/nanosec (ROS 1 used secs/nsecs).
+        stamp = data.get("header", {}).get("stamp", {})
+        header_time = stamp.get("sec", 0) + stamp.get("nanosec", 0) * 1e-9
 
-        # Update the current pose global variable
-        global current_pose
+        # Always keep the latest pose (used by "save current pose"), even on
+        # throttled ticks — this is cheap and must not miss updates.
         current_pose = {
             "position": {
                 "x": position_x,
@@ -394,6 +409,12 @@ def on_message(client, userdata, msg):
                 "z": orientation_z
             }
         }
+
+        # Throttle the SSE broadcast to ~10 Hz to avoid flooding the queue.
+        now = time.time()
+        if now - _last_odom_broadcast < _ODOM_BROADCAST_MIN_INTERVAL:
+            return
+        _last_odom_broadcast = now
 
         filtered_data = {
             "header": {
@@ -414,8 +435,6 @@ def on_message(client, userdata, msg):
                 "z": orientation_z
             }
         }
-        #filtered_message = f"header.time: {header_time}, linear.x: {linear_x}, linear.y: {linear_y}, angular.z: {angular_z}, position.x: {position_x}, position.y: {position_y}, orientation.z: {orientation_z}"
-        print(filtered_data)
         broadcast_message(filtered_data)
     except json.JSONDecodeError:
         print("Invalid JSON message received")
