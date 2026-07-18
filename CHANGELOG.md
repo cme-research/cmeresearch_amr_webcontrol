@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.2](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.5.1...jazzy-v0.5.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* **navigation:** keep Position tile live under continuous odometry ([eb4c150](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/eb4c15044ac43e7d74b0cb6cde64944d382f938d))
+* **navigation:** keep Position tile live under continuous odometry ([a71c660](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/a71c660d4c795eb31a57bf42495819e70872e13b))
+
 ## [0.5.1](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.5.0...jazzy-v0.5.1) (2026-07-18)
 
 
