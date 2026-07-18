@@ -632,6 +632,15 @@ def mqtt_stream_view(request):
                     message.setdefault('nav_feedback', get_nav_feedback())
                     message.setdefault('system_stats', get_system_stats())
                     message.setdefault('motor_feedback', get_motor_feedback())
+                    # Re-attach the latest robot pose. on_pose_message broadcasts
+                    # position/orientation on their own frame, but the coalescing
+                    # above prefers the odometry frame whenever one is queued —
+                    # and odometry streams continuously — so a standalone pose
+                    # frame is almost always dropped. Carrying it as state here
+                    # (like nav_status/robot_state) keeps the Position tile live.
+                    _cp = get_current_pose()
+                    message.setdefault('position', _cp['position'])
+                    message.setdefault('orientation', _cp['orientation'])
                     yield f"data: {json.dumps(message)}\n\n"
                     last_status = current_status
                     last_status_time = current_time
@@ -648,6 +657,8 @@ def mqtt_stream_view(request):
                         'nav_feedback': get_nav_feedback(),
                         'system_stats': get_system_stats(),
                         'motor_feedback': get_motor_feedback(),
+                        'position': get_current_pose()['position'],
+                        'orientation': get_current_pose()['orientation'],
                     }
                     yield f"data: {json.dumps(status_message)}\n\n"
                     last_status = current_status
