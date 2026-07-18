@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.5.0...jazzy-v0.5.1) (2026-07-18)
+
+
+### Bug Fixes
+
+* **deps:** add tzdata so pose-save renders don't 500 ([cee5b67](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/cee5b67f9a395db5bd8a9eca4044ebdfb6490af9))
+* **deps:** add tzdata so pose-save renders don't 500 ([1a75d96](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/1a75d963ee4c2d6fd292e08f19e21bdddb8cae41))
+
 ## [0.5.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.4.0...jazzy-v0.5.0) (2026-07-17)
 
 
