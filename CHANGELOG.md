@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.3](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.5.2...jazzy-v0.5.3) (2026-07-18)
+
+
+### Bug Fixes
+
+* **navigation:** move extra_js block outside the inline script ([caad799](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/caad799f0665ee1cc2aa6b7e816dd3af5bbf14c9))
+* **navigation:** stop nested &lt;script&gt; from killing the page JS ([bf9ee2f](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/bf9ee2f7672a626dbe5a38fc83799902127d8339))
+
 ## [0.5.2](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.5.1...jazzy-v0.5.2) (2026-07-18)
 
 
