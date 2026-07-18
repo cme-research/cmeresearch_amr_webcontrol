@@ -812,7 +812,8 @@
             if (refresh) refresh.addEventListener('click', (e) => { e.preventDefault(); loadVersions(true); });
         });
 
-        {% block extra_js %}{% endblock %}
     </script>
+    {# extra_js holds page-specific script tags and MUST stay outside the inline script above (a nested script tag breaks the whole block). #}
+    {% block extra_js %}{% endblock %}
 </body>
 </html>
