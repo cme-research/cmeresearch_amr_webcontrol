@@ -169,3 +169,37 @@ class MQTTClientModuleTests(SimpleTestCase):
         self.assertEqual(md['height'], 12)
         self.assertAlmostEqual(md['origin_x'], -5.0)
         self.assertAlmostEqual(md['origin_y'], -6.0)
+
+    def test_topics_derived_from_instance(self):
+        # robot.yaml only carries the instance id; the full topic set is derived.
+        t = self.mqtt_module._topics_for_instance('cmexamini-001')
+        self.assertEqual(t['subscribe_topic'], 'cmeresearch/cmexamini-001/base/odometry')
+        self.assertEqual(t['nav_status'], 'cmeresearch/cmexamini-001/navigation/status')
+        self.assertEqual(t['motor_feedback_prefix'], 'cmeresearch/cmexamini-001/base')
+
+    def test_robot_yaml_overlay_wins(self):
+        # _apply_robot_yaml_data overlays identity->topics + control onto a cfg.
+        cfg = {
+            'mqtt': {'broker_url': 'localhost', 'broker_port': 1883, 'subscribe_topic': 'x'},
+            'topics': {'movement': 'a', 'move_base_goal': 'b', 'robot_state': 'c', 'robot_cmd': 'd'},
+            'limits': {'max_linear_x': 0.31, 'max_linear_y': 0.3, 'max_angular_z': 0.8},
+            'drive_type': 'mecanum',
+            'docker_log_container': 'cmexaiii-hardware',
+            'motor_feedback_wheels': ['front_left', 'front_right', 'rear_left', 'rear_right'],
+            'velocities': {'forward': 0.2, 'backward': -0.2, 'left': 0.2, 'right': -0.2,
+                           'rotate_cw': -0.5, 'rotate_ccw': 0.5},
+            'map': {'width': 20, 'height': 20, 'resolution': 0.05,
+                    'origin_x': -10.0, 'origin_y': -10.0, 'obstacles': []},
+        }
+        data = {
+            'identity': {'instance': 'cmexamini-001'},
+            'control': {'drive_type': 'diff',
+                        'motor_feedback_wheels': ['front_right', 'rear_left'],
+                        'limits': {'max_linear_x': 0.3, 'max_linear_y': 0.0, 'max_angular_z': 1.0}},
+        }
+        self.mqtt_module._apply_robot_yaml_data(cfg, data)
+        self.assertEqual(cfg['mqtt']['subscribe_topic'], 'cmeresearch/cmexamini-001/base/odometry')
+        self.assertEqual(cfg['topics']['nav_status'], 'cmeresearch/cmexamini-001/navigation/status')
+        self.assertEqual(cfg['drive_type'], 'diff')
+        self.assertEqual(cfg['motor_feedback_wheels'], ['front_right', 'rear_left'])
+        self.assertAlmostEqual(cfg['limits']['max_linear_x'], 0.3)

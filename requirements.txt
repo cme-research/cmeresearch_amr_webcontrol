@@ -1,5 +1,7 @@
 Django>=5.2,<5.3
 paho-mqtt>=2.0,<3.0
+# robot.yaml (single source of truth) is read directly by the webapp.
+PyYAML>=6.0,<7.0
 # Timezone database for Python's zoneinfo. The slim ubuntu:22.04 base image
 # ships no system tzdata, so with USE_TZ=True any aware-datetime render
 # (e.g. a saved pose's created_at) raises ZoneInfoNotFoundError('UTC') -> 500.
