@@ -14,6 +14,14 @@
     "robot_pose": "cmeresearch/cmexaiii-001/base/robot_pose",
     "motor_feedback_prefix": "cmeresearch/cmexaiii-001/base"
   },
+  "drive_type": "mecanum",
+  "docker_log_container": "cmexaiii-hardware",
+  "motor_feedback_wheels": ["front_left", "front_right", "rear_left", "rear_right"],
+  "limits": {
+    "max_linear_x": 0.31,
+    "max_linear_y": 0.3,
+    "max_angular_z": 0.8
+  },
   "velocities": {
     "forward": 0.2,
     "backward": -0.2,
