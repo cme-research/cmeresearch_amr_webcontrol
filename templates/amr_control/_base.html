@@ -209,6 +209,7 @@
                 <li class="nav-item"><a class="nav-link{% if active_page == 'mission' %} active{% endif %}"    href="{% url 'mission' %}">Mission</a></li>
                 <li class="nav-item"><a class="nav-link{% if active_page == 'navigation' %} active{% endif %}" href="{% url 'navigation' %}">Navigation</a></li>
                 <li class="nav-item"><a class="nav-link{% if active_page == 'logs' %} active{% endif %}"       href="{% url 'logs' %}">Logs</a></li>
+                <li class="nav-item"><a class="nav-link{% if active_page == 'config' %} active{% endif %}"     href="{% url 'config' %}" title="Robot configuration"><i class="fas fa-sliders-h"></i></a></li>
             </ul>
             <div class="d-flex align-items-center">
                 <span id="robot-state-badge" class="state-badge state-unknown me-2">unknown</span>

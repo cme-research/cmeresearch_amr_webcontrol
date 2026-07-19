@@ -1,0 +1,28 @@
+{% extends 'amr_control/_base.html' %}
+{% block title %}Operator login{% endblock %}
+{% block content %}
+<div class="container" style="max-width: 420px; margin-top: 2rem;">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title mb-3"><i class="fas fa-lock me-2"></i>Operator login</h5>
+      {% if form.errors %}
+        <div class="alert alert-danger py-2">Invalid username or password.</div>
+      {% endif %}
+      <form method="post" action="{% url 'login' %}">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label" for="id_username">Username</label>
+          <input class="form-control" type="text" name="username" id="id_username" autofocus required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="id_password">Password</label>
+          <input class="form-control" type="password" name="password" id="id_password" required>
+        </div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="btn btn-primary w-100">Sign in</button>
+      </form>
+    </div>
+  </div>
+  <p class="text-muted small mt-3 mb-0">Shared operator account — gates the robot configuration page.</p>
+</div>
+{% endblock %}
