@@ -7,7 +7,8 @@ urlpatterns = [
     path('mission/',    views.mission_view,    name='mission'),
     path('navigation/', views.navigation_view, name='navigation'),
     path('logs/',       views.logs_view,       name='logs'),
-    path('config/',     views.config_view,     name='config'),
+    path('config/',       views.config_view,   name='config'),
+    path('config/apply/', views.config_apply,  name='config_apply'),
     # Legacy alias used by some older redirects (messages flow back here)
     path('home/',       views.button_view,     name='button_page'),
 
