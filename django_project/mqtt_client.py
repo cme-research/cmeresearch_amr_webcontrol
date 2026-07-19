@@ -464,11 +464,26 @@ for _wheel, _topic in MOTOR_FEEDBACK_TOPICS.items():
 
 def _load_app_config():
     base_dir = Path(__file__).resolve().parent.parent
-    default_app = base_dir / 'app_config.json'
 
-    path = os.getenv('APP_CONFIG_FILE') or str(default_app)
+    # Config file resolution order:
+    #   1. APP_CONFIG_FILE (explicit path) always wins.
+    #   2. app_config.<ROBOT_INSTANCE>.json, if ROBOT_INSTANCE is set and the
+    #      file exists. This lets ONE webapp image serve any robot: the deploy
+    #      passes ROBOT_INSTANCE (e.g. cmexamini-001) and the matching config is
+    #      picked without a per-robot image.
+    #   3. app_config.json (generic fallback).
+    explicit = os.getenv('APP_CONFIG_FILE')
+    if explicit:
+        path = explicit
+    else:
+        instance = (os.getenv('ROBOT_INSTANCE') or '').strip()
+        per_instance = (base_dir / f'app_config.{instance}.json') if instance else None
+        if per_instance is not None and per_instance.exists():
+            path = str(per_instance)
+        else:
+            path = str(base_dir / 'app_config.json')
 
-    # Defaults
+    # Defaults (mecanum cmexaiii-shaped, to preserve behaviour when unset)
     cfg = {
         'mqtt': {
             'broker_url': 'localhost',
@@ -481,6 +496,20 @@ def _load_app_config():
             'robot_state': 'robot_state',
             'robot_cmd': 'robot_cmd',
         },
+        # Server-side velocity caps (see views.py). Defaults match cmexaiii's
+        # stepper ceiling; a diff robot with different hardware overrides them.
+        'limits': {
+            'max_linear_x': 0.31,
+            'max_linear_y': 0.3,
+            'max_angular_z': 0.8,
+        },
+        # 'mecanum' (holonomic, has strafe) or 'diff' (no lateral motion).
+        'drive_type': 'mecanum',
+        # Container the Docker-logs viewer tails by default.
+        'docker_log_container': 'cmexaiii-hardware',
+        # Wheels exposed in the motor-feedback panel (mecanum = 4; a 2-motor
+        # diff base overrides this to its driven wheels).
+        'motor_feedback_wheels': ['front_left', 'front_right', 'rear_left', 'rear_right'],
         'velocities': {
             # Defaults for button movements
             'forward': 0.2,   # linear_x m/s
@@ -554,6 +583,27 @@ def _load_app_config():
                                 pass
                     if 'obstacles' in mp and isinstance(mp['obstacles'], list):
                         cfg['map']['obstacles'] = mp['obstacles']
+
+                # Velocity caps (optional)
+                lims = data.get('limits', {})
+                if isinstance(lims, dict):
+                    for key in list(cfg['limits'].keys()):
+                        if key in lims:
+                            try:
+                                cfg['limits'][key] = float(lims[key])
+                            except (ValueError, TypeError):
+                                pass
+
+                # Drive type / docker-logs container (optional strings)
+                if isinstance(data.get('drive_type'), str) and data['drive_type']:
+                    cfg['drive_type'] = data['drive_type']
+                if isinstance(data.get('docker_log_container'), str) and data['docker_log_container']:
+                    cfg['docker_log_container'] = data['docker_log_container']
+
+                # Motor-feedback wheel set (optional list of strings)
+                wheels = data.get('motor_feedback_wheels')
+                if isinstance(wheels, list) and wheels and all(isinstance(w, str) and w for w in wheels):
+                    cfg['motor_feedback_wheels'] = wheels
     except FileNotFoundError:
         print(f"App config file not found at {path}. Using defaults.")
     except json.JSONDecodeError as e:
@@ -579,9 +629,15 @@ NAV_STATUS_TOPIC = _app_conf['topics'].get('nav_status', NAV_STATUS_TOPIC)
 SYSTEM_STATS_TOPIC = _app_conf['topics'].get('system_stats', SYSTEM_STATS_TOPIC)
 POSE_TOPIC = _app_conf['topics'].get('robot_pose', POSE_TOPIC)
 _prefix = _app_conf['topics'].get('motor_feedback_prefix', 'base')
+# Wheel set is config-driven: mecanum exposes 4, a 2-motor diff base exposes its
+# driven wheels only. The dashboard renders whatever wheels the backend exposes.
+MOTOR_FEEDBACK_WHEELS = _app_conf.get(
+    'motor_feedback_wheels', ["front_left", "front_right", "rear_left", "rear_right"])
 MOTOR_FEEDBACK_TOPICS = {
-    w: f"{_prefix}/{w}/feedback" for w in ("front_left", "front_right", "rear_left", "rear_right")
+    w: f"{_prefix}/{w}/feedback" for w in MOTOR_FEEDBACK_WHEELS
 }
+# Re-scope the live feedback store to the configured wheels.
+current_motor_feedback = {w: {} for w in MOTOR_FEEDBACK_WHEELS}
 # Re-register callbacks with resolved topic names
 mqtt_client.message_callback_add(ROBOT_STATE_TOPIC, on_robot_state_message)
 mqtt_client.message_callback_add(NAV_STATUS_TOPIC, on_nav_status_message)
@@ -590,8 +646,11 @@ mqtt_client.message_callback_add(POSE_TOPIC, on_pose_message)
 for _wheel, _topic in MOTOR_FEEDBACK_TOPICS.items():
     mqtt_client.message_callback_add(_topic, _make_motor_feedback_callback(_wheel))
 
-# Expose velocity defaults
+# Expose velocity defaults + robot-shape config for views/templates.
 VELOCITY_DEFAULTS = _app_conf.get('velocities', {})
+LIMITS = _app_conf.get('limits', {})
+DRIVE_TYPE = _app_conf.get('drive_type', 'mecanum')
+DOCKER_LOG_CONTAINER = _app_conf.get('docker_log_container', 'cmexaiii-hardware')
 
 # Apply map config (override defaults defined above)
 map_conf = _app_conf['map']
