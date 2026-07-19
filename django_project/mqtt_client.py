@@ -771,6 +771,28 @@ def get_map_id():
     """Return the configured id of the map poses are saved against."""
     return MAP_ID
 
+
+def reload_runtime_config():
+    """Re-read robot.yaml and refresh the RUNTIME globals in place (limits,
+    velocities, drive type, docker-log container, map) so a config save takes
+    effect without restarting the webapp. Boot-time bits (MQTT topics /
+    subscriptions, broker connection) are deliberately NOT touched — changing
+    the instance still needs a restart."""
+    global VELOCITY_DEFAULTS, LIMITS, DRIVE_TYPE, DOCKER_LOG_CONTAINER, MAP_ID
+    conf = _load_app_config()
+    VELOCITY_DEFAULTS = conf.get('velocities', {})
+    LIMITS = conf.get('limits', {})
+    DRIVE_TYPE = conf.get('drive_type', 'mecanum')
+    DOCKER_LOG_CONTAINER = conf.get('docker_log_container', 'cmexaiii-hardware')
+    mc = conf.get('map', {})
+    for _k in ('width', 'height', 'resolution', 'origin_x', 'origin_y'):
+        if _k in mc:
+            map_data[_k] = mc[_k]
+    if mc.get('obstacles'):
+        map_data['obstacles'] = mc['obstacles']
+    MAP_ID = mc.get('map_id', MAP_ID)
+    return {'limits': LIMITS, 'drive_type': DRIVE_TYPE, 'velocities': VELOCITY_DEFAULTS}
+
 # Last Will & Testament: if this MQTT client dies ungracefully (Django crash,
 # container OOM, broker link drop), the broker publishes a zero TwistStamped
 # on cmd_vel on our behalf. twist_mux's 0.5s timeout then brakes the robot.
