@@ -23,7 +23,7 @@ from django_project.mqtt_client import (
     send_move_base_goal, get_current_pose, get_map_data, mqtt_client,
     VELOCITY_DEFAULTS, send_robot_command, get_current_robot_state,
     get_nav_status, get_nav_feedback, get_system_stats, get_motor_feedback,
-    get_map_id,
+    get_map_id, LIMITS, DOCKER_LOG_CONTAINER,
 )
 from .models import RobotPose
 import json
@@ -32,10 +32,10 @@ import paho.mqtt.client as mqtt
 
 # Server-side velocity caps. Browser-side clamps exist too, but never trust
 # the browser — these are the authoritative limits enforced before MQTT publish.
-MAX_LINEAR_X = 0.31  # m/s, forward/backward (hardware ceiling: stepper
-                     # max_step_vel=8000 microsteps/s -> ~0.314 m/s wheel surface)
-MAX_LINEAR_Y = 0.3   # m/s, lateral strafe (mecanum), already under the 0.31 cap
-MAX_ANGULAR_Z = 0.8  # rad/s, yaw
+# Config-driven (app_config "limits"); defaults match cmexaiii's stepper ceiling.
+MAX_LINEAR_X = LIMITS.get('max_linear_x', 0.31)   # m/s, forward/backward
+MAX_LINEAR_Y = LIMITS.get('max_linear_y', 0.3)    # m/s, lateral strafe (mecanum)
+MAX_ANGULAR_Z = LIMITS.get('max_angular_z', 0.8)  # rad/s, yaw
 
 
 def _clamp(value, limit):
@@ -549,7 +549,7 @@ def map_image(request):
 
 def docker_logs_stream(request):
     """Stream Docker container logs to the frontend using SSE."""
-    container = request.GET.get('container', 'cmexaiii-robot')
+    container = request.GET.get('container', DOCKER_LOG_CONTAINER)
     tail = request.GET.get('tail', '100')
 
     def event_stream():

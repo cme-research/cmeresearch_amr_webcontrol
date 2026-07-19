@@ -677,7 +677,7 @@
             const logsToggle    = document.getElementById('logs-toggle');
             if (!logsContainer || !logsToggle) return;
             if (logsSource) logsSource.close();
-            logsSource = new EventSource('/docker_logs/?container=cmexaiii-robot&tail=50');
+            logsSource = new EventSource('/docker_logs/?tail=50');
             logsSource.onmessage = function (event) {
                 const line = JSON.parse(event.data);
                 logsContainer.textContent += line + '\n';
