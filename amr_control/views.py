@@ -1,6 +1,8 @@
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django_project import robot_config as rc
 
 # Create your views here.
 from django.http import HttpResponse, JsonResponse, FileResponse, Http404
@@ -669,3 +671,101 @@ def mqtt_stream_view(request):
             unregister_subscriber(subscriber)
 
     return StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+
+
+# ── Configuration page (Phase 2) ────────────────────────────────────────────
+# Editable fields on the config page, as (dotted robot.yaml key, kind). Form
+# field names replace '.' with '__'. nav_launch is handled via a mode select.
+_STR, _INT, _FLOAT = 'str', 'int', 'float'
+CONFIG_FIELDS = [
+    ('identity.robot', _STR),
+    ('identity.instance', _STR),
+    ('identity.name', _STR),
+    ('ros.domain_id', _INT),
+    ('control.drive_type', _STR),
+    ('control.limits.max_linear_x', _FLOAT),
+    ('control.limits.max_linear_y', _FLOAT),
+    ('control.limits.max_angular_z', _FLOAT),
+    ('control.velocities.forward', _FLOAT),
+    ('control.velocities.backward', _FLOAT),
+    ('control.velocities.left', _FLOAT),
+    ('control.velocities.right', _FLOAT),
+    ('control.velocities.rotate_cw', _FLOAT),
+    ('control.velocities.rotate_ccw', _FLOAT),
+    ('map.map_id', _STR),
+    ('map.width', _INT),
+    ('map.height', _INT),
+    ('map.resolution', _FLOAT),
+    ('map.origin_x', _FLOAT),
+    ('map.origin_y', _FLOAT),
+]
+
+
+def _coerce(kind, raw):
+    raw = (raw or '').strip()
+    if kind == _INT:
+        return int(float(raw))
+    if kind == _FLOAT:
+        return float(raw)
+    return raw
+
+
+@login_required
+def config_view(request):
+    """Render / save robot.yaml. Behind the shared-operator login."""
+    cfg = rc.load_config()
+
+    if request.method == 'POST':
+        changed_boot = False
+        errors = []
+        for key, kind in CONFIG_FIELDS:
+            field = key.replace('.', '__')
+            if field not in request.POST:
+                continue
+            try:
+                val = _coerce(kind, request.POST.get(field))
+            except (ValueError, TypeError):
+                errors.append(key)
+                continue
+            if rc.get(cfg, key) != val:
+                rc.set_(cfg, key, val)
+                if key in rc.BOOT_TIME_FIELDS:
+                    changed_boot = True
+
+        # Nav mode select -> ros.nav_launch filename (derived from robot type).
+        mode = (request.POST.get('nav_mode') or '').strip()
+        if mode in ('mapping', 'localization'):
+            robot = rc.get(cfg, 'identity.robot', 'cmexaiii')
+            new_launch = f"{robot}_nav_{mode}.launch.py"
+            if rc.get(cfg, 'ros.nav_launch') != new_launch:
+                rc.set_(cfg, 'ros.nav_launch', new_launch)
+                changed_boot = True
+
+        if errors:
+            messages.error(request, "Invalid values for: " + ", ".join(errors))
+        else:
+            try:
+                rc.save_config(cfg)
+                if changed_boot:
+                    messages.warning(
+                        request,
+                        "Saved. Boot-time changes (robot type, instance, domain, nav mode) "
+                        "need a container restart to take effect — redeploy the robot. "
+                        "(Phase 3 will apply this from here with one click.)")
+                else:
+                    messages.success(
+                        request,
+                        "Saved. Runtime changes take effect on the next webapp reload.")
+            except Exception as e:
+                messages.error(request, f"Could not write robot.yaml: {e}")
+        return redirect('config')
+
+    # GET
+    nav_launch = rc.get(cfg, 'ros.nav_launch', '') or ''
+    nav_mode = 'localization' if 'localization' in nav_launch else 'mapping'
+    return render(request, 'amr_control/config.html', {
+        'active_page': 'config',
+        'cfg': cfg,
+        'config_path': rc.ROBOT_CONFIG_PATH,
+        'nav_mode': nav_mode,
+    })

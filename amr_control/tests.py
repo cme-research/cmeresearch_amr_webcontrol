@@ -163,3 +163,58 @@ class ViewTests(TestCase):
             self.assertEqual(data['status'], 'success')
             self.assertIn('Moving forward', data['message'])
             send_cmd.assert_called_once()
+
+
+class ConfigPageTests(TestCase):
+    """Phase 2 config page: login gate, render, and save-to-robot.yaml."""
+
+    def setUp(self):
+        import tempfile
+        from django.contrib.auth import get_user_model
+        from django_project import robot_config as rc
+        self.rc = rc
+        self.client = Client()
+        self.user = get_user_model().objects.create_user(username='op', password='pw12345')
+        self.tmp = tempfile.NamedTemporaryFile('w', suffix='.yaml', delete=False)
+        self.tmp.write(
+            "identity: {robot: cmexaiii, instance: cmexaiii-001, name: X}\n"
+            "ros: {domain_id: 12, nav_launch: cmexaiii_nav_mapping.launch.py}\n"
+            "control: {drive_type: mecanum, limits: {max_linear_x: 0.31}, velocities: {forward: 0.2}}\n"
+            "map: {map_id: cmexaiii_house, width: 20}\n")
+        self.tmp.close()
+        self._old_path = rc.ROBOT_CONFIG_PATH
+        rc.ROBOT_CONFIG_PATH = self.tmp.name
+
+    def tearDown(self):
+        import os
+        self.rc.ROBOT_CONFIG_PATH = self._old_path
+        os.unlink(self.tmp.name)
+
+    def test_config_requires_login(self):
+        resp = self.client.get(reverse('config'))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login/', resp.url)
+
+    def test_config_renders_for_operator(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('config'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Robot configuration')
+        self.assertContains(resp, 'cmexaiii-001')
+
+    def test_config_save_updates_yaml(self):
+        import yaml
+        self.client.force_login(self.user)
+        resp = self.client.post(reverse('config'), {
+            'identity__robot': 'cmexamini', 'identity__instance': 'cmexamini-001',
+            'identity__name': 'Mini', 'ros__domain_id': '13', 'nav_mode': 'localization',
+            'control__drive_type': 'diff', 'control__limits__max_linear_x': '0.3',
+            'control__velocities__forward': '0.25', 'map__map_id': 'cmexamini_house',
+            'map__width': '20',
+        })
+        self.assertEqual(resp.status_code, 302)
+        data = yaml.safe_load(open(self.tmp.name))
+        self.assertEqual(data['identity']['robot'], 'cmexamini')
+        self.assertEqual(data['ros']['domain_id'], 13)
+        self.assertEqual(data['ros']['nav_launch'], 'cmexamini_nav_localization.launch.py')
+        self.assertEqual(data['control']['drive_type'], 'diff')
