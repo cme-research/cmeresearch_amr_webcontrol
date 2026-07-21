@@ -37,7 +37,10 @@
         <div class="row g-3">
           <div class="col-md-6">
             <label class="form-label">Robot type</label>
-            <input class="form-control" name="identity__robot" value="{{ cfg.identity.robot }}">
+            <select class="form-select" name="identity__robot">
+              <option value="cmexamini"{% if cfg.identity.robot == 'cmexamini' %} selected{% endif %}>cmexamini</option>
+              <option value="cmexaiii"{% if cfg.identity.robot == 'cmexaiii' %} selected{% endif %}>cmexaiii</option>
+            </select>
             <div class="form-text">Selects launch/description/config + container names.</div>
           </div>
           <div class="col-md-6">
