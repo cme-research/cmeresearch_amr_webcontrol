@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.5.3...jazzy-v0.6.0) (2026-07-21)
+
+
+### Neue Features
+
+* **cmexamini:** per-instance config + config-driven robot shape ([b66a185](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/b66a185ee709976e59569dc10858010cedddfa82))
+* **cmexamini:** per-instance config + config-driven robot shape ([7ea1485](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/7ea1485345c2748046c7dd8cc58740a92c83d04c))
+* **config:** one-click Apply + live runtime reload (Phase 3, webapp) ([d7bba69](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/d7bba69bd3a3c121617d4fa28ff51e8dde6bf110))
+* **config:** one-click Apply + live runtime reload (web-config Phase 3, webapp) ([923c4aa](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/923c4aacd841c9086e7b734f4f6ffdd2e5aa056c))
+* **config:** robot configuration page (web-config Phase 2) ([73105f6](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/73105f697511147ae8a94db1a4772f05b7516006))
+* **config:** robot configuration page (web-config Phase 2) ([1f6a123](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/1f6a1238a6fa05ded87d8da1065696115b069639))
+* **config:** webapp reads robot.yaml (web-config Phase 1) ([059a0d7](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/059a0d7b5d3fc54f27402f48afd387de330d8456))
+* **config:** webapp reads robot.yaml (web-config Phase 1) ([246a8b4](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/246a8b4a61220ef0408543b9bf0d1ecd02cca37b))
+* promote web robot-config to jazzy ([2ab410c](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/2ab410cbebd2873718e7c67631b94e6f197e115a))
+
 ## [0.5.3](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.5.2...jazzy-v0.5.3) (2026-07-18)
 
 
