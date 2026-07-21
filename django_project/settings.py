@@ -190,3 +190,7 @@ LOGGING = {
         },
     }
 }
+# ── Auth (operator login gates the config page; other pages stay open) ──────
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'config'
+LOGOUT_REDIRECT_URL = 'teleop'

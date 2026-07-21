@@ -163,3 +163,107 @@ class ViewTests(TestCase):
             self.assertEqual(data['status'], 'success')
             self.assertIn('Moving forward', data['message'])
             send_cmd.assert_called_once()
+
+
+class ConfigPageTests(TestCase):
+    """Phase 2 config page: login gate, render, and save-to-robot.yaml."""
+
+    def setUp(self):
+        import tempfile
+        from django.contrib.auth import get_user_model
+        from django_project import robot_config as rc
+        self.rc = rc
+        self.client = Client()
+        self.user = get_user_model().objects.create_user(username='op', password='pw12345')
+        self.tmp = tempfile.NamedTemporaryFile('w', suffix='.yaml', delete=False)
+        self.tmp.write(
+            "identity: {robot: cmexaiii, instance: cmexaiii-001, name: X}\n"
+            "ros: {domain_id: 12, nav_launch: cmexaiii_nav_mapping.launch.py}\n"
+            "control: {drive_type: mecanum, limits: {max_linear_x: 0.31}, velocities: {forward: 0.2}}\n"
+            "map: {map_id: cmexaiii_house, width: 20}\n")
+        self.tmp.close()
+        self._old_path = rc.ROBOT_CONFIG_PATH
+        rc.ROBOT_CONFIG_PATH = self.tmp.name
+
+    def tearDown(self):
+        import os
+        self.rc.ROBOT_CONFIG_PATH = self._old_path
+        os.unlink(self.tmp.name)
+
+    def test_config_requires_login(self):
+        resp = self.client.get(reverse('config'))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login/', resp.url)
+
+    def test_config_renders_for_operator(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('config'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Robot configuration')
+        self.assertContains(resp, 'cmexaiii-001')
+
+    def test_config_save_updates_yaml(self):
+        import yaml
+        self.client.force_login(self.user)
+        resp = self.client.post(reverse('config'), {
+            'identity__robot': 'cmexamini', 'identity__instance': 'cmexamini-001',
+            'identity__name': 'Mini', 'ros__domain_id': '13', 'nav_mode': 'localization',
+            'control__drive_type': 'diff', 'control__limits__max_linear_x': '0.3',
+            'control__velocities__forward': '0.25', 'map__map_id': 'cmexamini_house',
+            'map__width': '20',
+        })
+        self.assertEqual(resp.status_code, 302)
+        data = yaml.safe_load(open(self.tmp.name))
+        self.assertEqual(data['identity']['robot'], 'cmexamini')
+        self.assertEqual(data['ros']['domain_id'], 13)
+        self.assertEqual(data['ros']['nav_launch'], 'cmexamini_nav_localization.launch.py')
+        self.assertEqual(data['control']['drive_type'], 'diff')
+
+
+class ConfigApplyTests(TestCase):
+    """Phase 3: apply endpoint auth/guard + runtime live-reload on save."""
+
+    def setUp(self):
+        import tempfile, os
+        from django.contrib.auth import get_user_model
+        from django_project import robot_config as rc
+        self.os, self.rc = os, rc
+        self.client = Client()
+        self.user = get_user_model().objects.create_user(username='op2', password='pw12345')
+        self.tmp = tempfile.NamedTemporaryFile('w', suffix='.yaml', delete=False)
+        self.tmp.write("identity: {robot: cmexaiii, instance: cmexaiii-001, name: X}\n"
+                       "control: {limits: {max_linear_x: 0.31}}\n")
+        self.tmp.close()
+        self._old_path = rc.ROBOT_CONFIG_PATH
+        rc.ROBOT_CONFIG_PATH = self.tmp.name
+        self._old_env = os.environ.get('ROBOT_CONFIG_FILE')
+        os.environ['ROBOT_CONFIG_FILE'] = self.tmp.name
+
+    def tearDown(self):
+        self.rc.ROBOT_CONFIG_PATH = self._old_path
+        if self._old_env is None:
+            self.os.environ.pop('ROBOT_CONFIG_FILE', None)
+        else:
+            self.os.environ['ROBOT_CONFIG_FILE'] = self._old_env
+        self.os.unlink(self.tmp.name)
+        # reload_runtime_config mutates module globals; reset them from the
+        # restored environment so state doesn't leak into other tests.
+        from django_project import mqtt_client as m
+        m.reload_runtime_config()
+
+    def test_apply_requires_login(self):
+        resp = self.client.post(reverse('config_apply'))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/accounts/login/', resp.url)
+
+    def test_apply_no_ops_without_deploy_dir(self):
+        # DEPLOY_DIR unset in tests -> graceful redirect, no docker calls, no crash.
+        self.client.force_login(self.user)
+        resp = self.client.post(reverse('config_apply'))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_runtime_save_applies_live(self):
+        from django_project import mqtt_client as m
+        self.client.force_login(self.user)
+        self.client.post(reverse('config'), {'control__limits__max_linear_x': '0.22'})
+        self.assertAlmostEqual(m.LIMITS.get('max_linear_x'), 0.22)

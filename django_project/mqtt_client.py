@@ -462,21 +462,115 @@ for _wheel, _topic in MOTOR_FEEDBACK_TOPICS.items():
 #   "map": {"width":20,"height":20,"resolution":0.05,"origin_x":-10.0,"origin_y":-10.0,"obstacles": []}
 # }
 
+def _read_robot_yaml(path):
+    """Parse robot.yaml; return the dict, or None if missing/unreadable/no PyYAML."""
+    try:
+        import yaml
+    except ImportError:
+        print("robot.yaml present but PyYAML not installed; using app_config.json.")
+        return None
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"Error reading robot.yaml {path}: {e}; using app_config.json.")
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _topics_for_instance(instance):
+    """The cmeresearch/<instance>/... MQTT layout — the one place it's encoded,
+    so robot.yaml only needs to carry the instance id."""
+    p = f"cmeresearch/{instance}"
+    return {
+        'subscribe_topic': f"{p}/base/odometry",
+        'movement': f"{p}/mqtt/cmd_vel",
+        'move_base_goal': f"{p}/amr_control/move_base_goal",
+        'robot_state': f"{p}/robot_state",
+        'robot_cmd': f"{p}/robot_cmd",
+        'nav_status': f"{p}/navigation/status",
+        'system_stats': f"{p}/system/stats",
+        'robot_pose': f"{p}/base/robot_pose",
+        'motor_feedback_prefix': f"{p}/base",
+    }
+
+
+def _apply_robot_yaml_data(cfg, data):
+    """Overlay robot.yaml onto cfg: derive the MQTT topics from identity.instance
+    and apply mqtt/control/map overrides (robot.yaml wins where it sets a value)."""
+    identity = data.get('identity', {}) or {}
+    instance = str(identity.get('instance') or '').strip()
+    if instance:
+        t = _topics_for_instance(instance)
+        cfg['mqtt']['subscribe_topic'] = t.pop('subscribe_topic')
+        cfg['topics'].update(t)
+
+    mqttd = data.get('mqtt', {}) or {}
+    if isinstance(mqttd, dict):
+        if isinstance(mqttd.get('broker_url'), str) and mqttd['broker_url']:
+            cfg['mqtt']['broker_url'] = mqttd['broker_url']
+        if 'broker_port' in mqttd:
+            try:
+                cfg['mqtt']['broker_port'] = int(mqttd['broker_port'])
+            except (ValueError, TypeError):
+                pass
+
+    control = data.get('control', {}) or {}
+    if isinstance(control, dict):
+        if isinstance(control.get('drive_type'), str) and control['drive_type']:
+            cfg['drive_type'] = control['drive_type']
+        if isinstance(control.get('docker_log_container'), str) and control['docker_log_container']:
+            cfg['docker_log_container'] = control['docker_log_container']
+        wheels = control.get('motor_feedback_wheels')
+        if isinstance(wheels, list) and wheels and all(isinstance(w, str) and w for w in wheels):
+            cfg['motor_feedback_wheels'] = wheels
+        for section in ('limits', 'velocities'):
+            src = control.get(section, {})
+            if isinstance(src, dict):
+                for k in list(cfg[section].keys()):
+                    if k in src:
+                        try:
+                            cfg[section][k] = float(src[k])
+                        except (ValueError, TypeError):
+                            pass
+
+    mp = data.get('map', {}) or {}
+    if isinstance(mp, dict):
+        for k in ['width', 'height', 'resolution', 'origin_x', 'origin_y']:
+            if k in mp:
+                try:
+                    cfg['map'][k] = float(mp[k]) if k in ['resolution', 'origin_x', 'origin_y'] else int(mp[k])
+                except (ValueError, TypeError):
+                    pass
+        if isinstance(mp.get('obstacles'), list):
+            cfg['map']['obstacles'] = mp['obstacles']
+        # map_id intentionally not wired yet — keeps the saved-pose namespace at
+        # 'default' across the app_config -> robot.yaml switch (no orphaned poses).
+
+
 def _load_app_config():
     base_dir = Path(__file__).resolve().parent.parent
 
-    # Config file resolution order:
-    #   1. APP_CONFIG_FILE (explicit path) always wins.
-    #   2. app_config.<ROBOT_INSTANCE>.json, if ROBOT_INSTANCE is set and the
-    #      file exists. This lets ONE webapp image serve any robot: the deploy
-    #      passes ROBOT_INSTANCE (e.g. cmexamini-001) and the matching config is
-    #      picked without a per-robot image.
-    #   3. app_config.json (generic fallback).
+    # robot.yaml is the single source of truth (Phase 1), mounted by compose at
+    # /robot/config/robot.yaml (override with ROBOT_CONFIG_FILE). It is overlaid
+    # ON TOP of the app_config JSON below: robot.yaml wins for identity/topics and
+    # anything it sets, while the JSON still supplies control defaults for robots
+    # not yet fully migrated. APP_CONFIG_FILE (explicit) disables the overlay.
     explicit = os.getenv('APP_CONFIG_FILE')
+    robot_yaml_path = os.getenv('ROBOT_CONFIG_FILE', '/robot/config/robot.yaml')
+    _yaml_data = None
+    if not explicit and robot_yaml_path and os.path.exists(robot_yaml_path):
+        _yaml_data = _read_robot_yaml(robot_yaml_path)
+
+    # Base JSON layer. Instance hint prefers robot.yaml, then the ROBOT_INSTANCE
+    # env, so the matching app_config.<instance>.json is picked.
     if explicit:
         path = explicit
     else:
-        instance = (os.getenv('ROBOT_INSTANCE') or '').strip()
+        instance = ''
+        if _yaml_data:
+            instance = str((_yaml_data.get('identity') or {}).get('instance') or '').strip()
+        instance = instance or (os.getenv('ROBOT_INSTANCE') or '').strip()
         per_instance = (base_dir / f'app_config.{instance}.json') if instance else None
         if per_instance is not None and per_instance.exists():
             path = str(per_instance)
@@ -611,6 +705,10 @@ def _load_app_config():
     except Exception as e:
         print(f"Error reading app config file {path}: {e}. Using defaults.")
 
+    # Phase 1: overlay robot.yaml on top of the JSON base (it wins where set).
+    if _yaml_data is not None:
+        _apply_robot_yaml_data(cfg, _yaml_data)
+
     return cfg
 
 _app_conf = _load_app_config()
@@ -672,6 +770,28 @@ MAP_ID = map_conf.get('map_id', 'default')
 def get_map_id():
     """Return the configured id of the map poses are saved against."""
     return MAP_ID
+
+
+def reload_runtime_config():
+    """Re-read robot.yaml and refresh the RUNTIME globals in place (limits,
+    velocities, drive type, docker-log container, map) so a config save takes
+    effect without restarting the webapp. Boot-time bits (MQTT topics /
+    subscriptions, broker connection) are deliberately NOT touched — changing
+    the instance still needs a restart."""
+    global VELOCITY_DEFAULTS, LIMITS, DRIVE_TYPE, DOCKER_LOG_CONTAINER, MAP_ID
+    conf = _load_app_config()
+    VELOCITY_DEFAULTS = conf.get('velocities', {})
+    LIMITS = conf.get('limits', {})
+    DRIVE_TYPE = conf.get('drive_type', 'mecanum')
+    DOCKER_LOG_CONTAINER = conf.get('docker_log_container', 'cmexaiii-hardware')
+    mc = conf.get('map', {})
+    for _k in ('width', 'height', 'resolution', 'origin_x', 'origin_y'):
+        if _k in mc:
+            map_data[_k] = mc[_k]
+    if mc.get('obstacles'):
+        map_data['obstacles'] = mc['obstacles']
+    MAP_ID = mc.get('map_id', MAP_ID)
+    return {'limits': LIMITS, 'drive_type': DRIVE_TYPE, 'velocities': VELOCITY_DEFAULTS}
 
 # Last Will & Testament: if this MQTT client dies ungracefully (Django crash,
 # container OOM, broker link drop), the broker publishes a zero TwistStamped

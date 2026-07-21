@@ -1,6 +1,9 @@
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django_project import robot_config as rc
+from django_project import mqtt_client as _mc
 
 # Create your views here.
 from django.http import HttpResponse, JsonResponse, FileResponse, Http404
@@ -347,9 +350,11 @@ def joystick_cmd(request):
     except (json.JSONDecodeError, UnicodeDecodeError):
         return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
 
-    lx = _clamp(payload.get('linear_x', 0.0), MAX_LINEAR_X)
-    ly = _clamp(payload.get('linear_y', 0.0), MAX_LINEAR_Y)
-    az = _clamp(payload.get('angular_z', 0.0), MAX_ANGULAR_Z)
+    # Read caps live from mqtt_client so a config save (reload_runtime_config)
+    # takes effect without restarting the webapp.
+    lx = _clamp(payload.get('linear_x', 0.0), _mc.LIMITS.get('max_linear_x', MAX_LINEAR_X))
+    ly = _clamp(payload.get('linear_y', 0.0), _mc.LIMITS.get('max_linear_y', MAX_LINEAR_Y))
+    az = _clamp(payload.get('angular_z', 0.0), _mc.LIMITS.get('max_angular_z', MAX_ANGULAR_Z))
 
     ok = send_movement_command(linear_x=lx, linear_y=ly, angular_z=az)
     return JsonResponse({
@@ -669,3 +674,196 @@ def mqtt_stream_view(request):
             unregister_subscriber(subscriber)
 
     return StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+
+
+# ── Configuration page (Phase 2) ────────────────────────────────────────────
+# Editable fields on the config page, as (dotted robot.yaml key, kind). Form
+# field names replace '.' with '__'. nav_launch is handled via a mode select.
+_STR, _INT, _FLOAT = 'str', 'int', 'float'
+CONFIG_FIELDS = [
+    ('identity.robot', _STR),
+    ('identity.instance', _STR),
+    ('identity.name', _STR),
+    ('ros.domain_id', _INT),
+    ('control.drive_type', _STR),
+    ('control.limits.max_linear_x', _FLOAT),
+    ('control.limits.max_linear_y', _FLOAT),
+    ('control.limits.max_angular_z', _FLOAT),
+    ('control.velocities.forward', _FLOAT),
+    ('control.velocities.backward', _FLOAT),
+    ('control.velocities.left', _FLOAT),
+    ('control.velocities.right', _FLOAT),
+    ('control.velocities.rotate_cw', _FLOAT),
+    ('control.velocities.rotate_ccw', _FLOAT),
+    ('map.map_id', _STR),
+    ('map.width', _INT),
+    ('map.height', _INT),
+    ('map.resolution', _FLOAT),
+    ('map.origin_x', _FLOAT),
+    ('map.origin_y', _FLOAT),
+]
+
+
+def _coerce(kind, raw):
+    raw = (raw or '').strip()
+    if kind == _INT:
+        return int(float(raw))
+    if kind == _FLOAT:
+        return float(raw)
+    return raw
+
+
+@login_required
+def config_view(request):
+    """Render / save robot.yaml. Behind the shared-operator login."""
+    cfg = rc.load_config()
+
+    if request.method == 'POST':
+        changed_boot = False
+        errors = []
+        for key, kind in CONFIG_FIELDS:
+            field = key.replace('.', '__')
+            if field not in request.POST:
+                continue
+            try:
+                val = _coerce(kind, request.POST.get(field))
+            except (ValueError, TypeError):
+                errors.append(key)
+                continue
+            if rc.get(cfg, key) != val:
+                rc.set_(cfg, key, val)
+                if key in rc.BOOT_TIME_FIELDS:
+                    changed_boot = True
+
+        # Nav mode select -> ros.nav_launch filename (derived from robot type).
+        mode = (request.POST.get('nav_mode') or '').strip()
+        if mode in ('mapping', 'localization'):
+            robot = rc.get(cfg, 'identity.robot', 'cmexaiii')
+            new_launch = f"{robot}_nav_{mode}.launch.py"
+            if rc.get(cfg, 'ros.nav_launch') != new_launch:
+                rc.set_(cfg, 'ros.nav_launch', new_launch)
+                changed_boot = True
+
+        if errors:
+            messages.error(request, "Invalid values for: " + ", ".join(errors))
+        else:
+            try:
+                rc.save_config(cfg)
+                if changed_boot:
+                    messages.warning(
+                        request,
+                        "Saved. Boot-time changes (robot type, instance, domain, nav mode) "
+                        "need a container restart to take effect — use “Apply & restart” "
+                        "below (or redeploy the robot).")
+                else:
+                    # Runtime-only change: refresh the live config so it takes
+                    # effect immediately, no restart.
+                    _mc.reload_runtime_config()
+                    messages.success(request, "Saved and applied live (runtime settings).")
+            except Exception as e:
+                messages.error(request, f"Could not write robot.yaml: {e}")
+        return redirect('config')
+
+    # GET
+    nav_launch = rc.get(cfg, 'ros.nav_launch', '') or ''
+    nav_mode = 'localization' if 'localization' in nav_launch else 'mapping'
+    return render(request, 'amr_control/config.html', {
+        'active_page': 'config',
+        'cfg': cfg,
+        'config_path': rc.ROBOT_CONFIG_PATH,
+        'nav_mode': nav_mode,
+    })
+
+
+# ── One-click Apply (Phase 3) ───────────────────────────────────────────────
+# Renders robot.yaml -> .compose.env + bridge.conf and recreates the ROS
+# containers so BOOT-TIME changes take effect. Talks to the Docker daemon via a
+# socket-proxy (DOCKER_HOST), and needs the cmexa_install deploy dir bind-mounted
+# at its own host path (DEPLOY_DIR) so compose bind-mount paths resolve. When
+# DEPLOY_DIR is unset (e.g. local dev, or apply not enabled) the endpoint no-ops
+# with a clear message instead of touching anything.
+DEPLOY_DIR = os.getenv('DEPLOY_DIR', '')
+COMPOSE_FILE_NAME = os.getenv('COMPOSE_FILE', 'docker-compose.prod.yml')
+AUDIT_LOG = os.getenv('CONFIG_AUDIT_LOG', '/robot/config/config-audit.log')
+
+
+def _apply_available():
+    return bool(DEPLOY_DIR) and os.path.isdir(DEPLOY_DIR)
+
+
+def _docker_env():
+    env = dict(os.environ)
+    if os.getenv('DOCKER_HOST'):
+        env['DOCKER_HOST'] = os.getenv('DOCKER_HOST')
+    return env
+
+
+def _audit(user, action, result):
+    try:
+        from django.utils import timezone
+        who = user.get_username() if getattr(user, 'is_authenticated', False) else 'anonymous'
+        with open(AUDIT_LOG, 'a') as f:
+            f.write(f"{timezone.now().isoformat()}\t{who}\t{action}\t{result}\n")
+    except Exception:
+        pass
+
+
+def _nav_running(robot):
+    try:
+        r = subprocess.run(['docker', 'ps', '--format', '{{.Names}}'],
+                           env=_docker_env(), capture_output=True, text=True, timeout=20)
+        return f"{robot}-nav" in r.stdout.split()
+    except Exception:
+        return False
+
+
+def _compose(*args, timeout=420):
+    cmd = ['docker', 'compose', '--env-file', '.compose.env',
+           '-f', COMPOSE_FILE_NAME, '--project-directory', DEPLOY_DIR, *args]
+    return subprocess.run(cmd, cwd=DEPLOY_DIR, env=_docker_env(),
+                          capture_output=True, text=True, timeout=timeout)
+
+
+@login_required
+@require_POST
+def config_apply(request):
+    """Render robot.yaml + recreate the ROS containers with the new config."""
+    if not _apply_available():
+        _audit(request.user, 'apply', 'unavailable')
+        messages.error(
+            request,
+            "One-click apply is not enabled here (deploy dir not mounted). "
+            "Redeploy the robot manually to apply boot-time changes.")
+        return redirect('config')
+
+    robot = rc.get(rc.load_config(), 'identity.robot', 'cmexaiii')
+    try:
+        # 1. robot.yaml -> generated .compose.env + rendered bridge.conf
+        r = subprocess.run(
+            ['python3', 'scripts/render_config.py', '--config', 'robot.yaml',
+             '--emit-env', '.compose.env', '--render-bridge'],
+            cwd=DEPLOY_DIR, env=_docker_env(), capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            raise RuntimeError(f"render_config: {(r.stderr or r.stdout).strip()[:300]}")
+
+        # 2. recreate the affected containers with the new env. --no-deps keeps
+        #    it off the webapp (this request) and brickd. mosquitto picks up the
+        #    re-rendered bridge.conf; nav only if it was running.
+        r = _compose('up', '-d', '--no-deps', '--force-recreate', 'mosquitto', 'hardware')
+        if r.returncode != 0:
+            raise RuntimeError(f"compose up hardware: {(r.stderr or '').strip()[-400:]}")
+        if _nav_running(robot):
+            r = _compose('--profile', 'nav', 'up', '-d', '--no-deps', '--force-recreate', 'nav')
+            if r.returncode != 0:
+                raise RuntimeError(f"compose up nav: {(r.stderr or '').strip()[-400:]}")
+
+        _mc.reload_runtime_config()
+        _audit(request.user, 'apply', 'ok')
+        messages.success(
+            request,
+            "Applied — config rendered and the robot's containers restarted with "
+            "the new settings. (If you changed the instance id, reload this page.)")
+    except Exception as e:
+        _audit(request.user, 'apply', f'error: {e}')
+        messages.error(request, f"Apply failed: {e}")
+    return redirect('config')

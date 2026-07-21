@@ -1,0 +1,175 @@
+{% extends 'amr_control/_base.html' %}
+{% block title %}Robot configuration{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 900px; margin-top: 1rem;">
+
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Robot configuration</h4>
+    <span class="text-muted small">
+      {% if user.is_authenticated %}
+        <i class="fas fa-user me-1"></i>{{ user.get_username }} ·
+        <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}<button type="submit" class="btn btn-link btn-sm p-0 align-baseline">log out</button></form>
+      {% endif %}
+    </span>
+  </div>
+  <p class="text-muted small">
+    Single source of truth: <code>{{ config_path }}</code>. Edits are written back to
+    <code>robot.yaml</code>.
+  </p>
+
+  <form method="post" action="{% url 'config' %}">
+    {% csrf_token %}
+
+    {# ── Boot-time settings ─────────────────────────────────────────────── #}
+    <div class="card shadow-sm mb-4 border-warning">
+      <div class="card-header bg-warning-subtle d-flex align-items-center">
+        <i class="fas fa-power-off me-2 text-warning"></i>
+        <strong>Boot-time settings</strong>
+        <span class="badge text-bg-warning ms-2">restart required</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Identity and DDS domain are read when the containers start. Changing them
+          needs a redeploy to take effect — <em>Phase 3 will apply this from here with
+          one click</em>; for now, redeploy the robot after saving.
+        </p>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Robot type</label>
+            <input class="form-control" name="identity__robot" value="{{ cfg.identity.robot }}">
+            <div class="form-text">Selects launch/description/config + container names.</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Instance id</label>
+            <input class="form-control" name="identity__instance" value="{{ cfg.identity.instance }}">
+            <div class="form-text">MQTT prefix <code>cmeresearch/&lt;instance&gt;/…</code></div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">ROS domain id</label>
+            <input class="form-control" type="number" min="0" max="232" name="ros__domain_id" value="{{ cfg.ros.domain_id }}">
+            <div class="form-text">Distinct per robot on a shared subnet.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Nav mode</label>
+            <select class="form-select" name="nav_mode">
+              <option value="mapping"{% if nav_mode == 'mapping' %} selected{% endif %}>mapping</option>
+              <option value="localization"{% if nav_mode == 'localization' %} selected{% endif %}>localization</option>
+            </select>
+            <div class="form-text">Current: <code>{{ cfg.ros.nav_launch }}</code></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Runtime settings ───────────────────────────────────────────────── #}
+    <div class="card shadow-sm mb-4">
+      <div class="card-header d-flex align-items-center">
+        <i class="fas fa-gauge-high me-2 text-primary"></i>
+        <strong>Runtime settings</strong>
+        <span class="badge text-bg-secondary ms-2">applied on webapp reload</span>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Display name</label>
+            <input class="form-control" name="identity__name" value="{{ cfg.identity.name }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Drive type</label>
+            <select class="form-select" name="control__drive_type">
+              <option value="mecanum"{% if cfg.control.drive_type == 'mecanum' %} selected{% endif %}>mecanum</option>
+              <option value="diff"{% if cfg.control.drive_type == 'diff' %} selected{% endif %}>diff</option>
+            </select>
+          </div>
+        </div>
+
+        <hr class="my-4">
+        <h6 class="text-muted">Velocity limits (m/s, rad/s)</h6>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">max linear x</label>
+            <input class="form-control" type="number" step="any" name="control__limits__max_linear_x" value="{{ cfg.control.limits.max_linear_x }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">max linear y</label>
+            <input class="form-control" type="number" step="any" name="control__limits__max_linear_y" value="{{ cfg.control.limits.max_linear_y }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">max angular z</label>
+            <input class="form-control" type="number" step="any" name="control__limits__max_angular_z" value="{{ cfg.control.limits.max_angular_z }}">
+          </div>
+        </div>
+
+        <hr class="my-4">
+        <h6 class="text-muted">Button velocities</h6>
+        <div class="row g-3">
+          {% for k, v in cfg.control.velocities.items %}
+          <div class="col-md-4 col-6">
+            <label class="form-label">{{ k }}</label>
+            <input class="form-control" type="number" step="any" name="control__velocities__{{ k }}" value="{{ v }}">
+          </div>
+          {% endfor %}
+        </div>
+
+        <hr class="my-4">
+        <h6 class="text-muted">Map</h6>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">map id</label>
+            <input class="form-control" name="map__map_id" value="{{ cfg.map.map_id }}">
+          </div>
+          <div class="col-md-2 col-6">
+            <label class="form-label">width</label>
+            <input class="form-control" type="number" name="map__width" value="{{ cfg.map.width }}">
+          </div>
+          <div class="col-md-2 col-6">
+            <label class="form-label">height</label>
+            <input class="form-control" type="number" name="map__height" value="{{ cfg.map.height }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">resolution</label>
+            <input class="form-control" type="number" step="any" name="map__resolution" value="{{ cfg.map.resolution }}">
+          </div>
+          <div class="col-md-3 col-6">
+            <label class="form-label">origin x</label>
+            <input class="form-control" type="number" step="any" name="map__origin_x" value="{{ cfg.map.origin_x }}">
+          </div>
+          <div class="col-md-3 col-6">
+            <label class="form-label">origin y</label>
+            <input class="form-control" type="number" step="any" name="map__origin_y" value="{{ cfg.map.origin_y }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <span class="text-muted small">Save writes <code>robot.yaml</code>. Runtime changes apply live; boot-time changes need Apply.</span>
+      <button type="submit" class="btn btn-primary px-4">
+        <i class="fas fa-save me-2"></i>Save configuration
+      </button>
+    </div>
+  </form>
+
+  {# Apply is a SEPARATE action (own form): re-renders robot.yaml and recreates
+     the ROS containers. Confirmed, and logged to the audit trail. #}
+  <div class="card border-danger-subtle mb-5">
+    <div class="card-body d-flex flex-wrap gap-2 justify-content-between align-items-center">
+      <div>
+        <strong><i class="fas fa-rotate-right me-2 text-danger"></i>Apply &amp; restart</strong>
+        <div class="text-muted small">
+          Renders <code>robot.yaml</code> and recreates the robot's hardware/nav
+          containers so boot-time changes take effect. Save first.
+        </div>
+      </div>
+      <form method="post" action="{% url 'config_apply' %}"
+            onsubmit="return confirm('Restart the robot’s containers with the saved configuration? The ROS graph will drop for ~30s.');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger px-4">
+          <i class="fas fa-rotate-right me-2"></i>Apply &amp; restart
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
