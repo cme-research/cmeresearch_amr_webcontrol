@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.7.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.6.0...jazzy-v0.7.0) (2026-07-21)
+
+
+### Neue Features
+
+* **config:** make Robot type a dropdown (cmexamini/cmexaiii) ([8b4790f](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/8b4790f920e386c5fc0ee7d317fee5c31ab9dce1))
+* **config:** robot/test login + Robot type dropdown ([41d6a5a](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/41d6a5a6febe0ad938c583dc6a04b43a72c0f45d))
+* **config:** seed robot/test login user on container boot ([6e98c4b](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/6e98c4b8751d8ae758f5bf2403d5f55aebc453da))
+* promote config-page fixes + centered badge to jazzy ([31793e0](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/31793e0d8f70f9955015a0d360c4fa22ac0a5b11))
+* promote config-page fixes to jazzy ([f791b5c](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/f791b5c9a0354e177301a10fcb00ffb1dede66cd))
+
+
+### Bug Fixes
+
+* **config:** stop multi-line {# #} comment leaking on config page ([0cf5e49](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/0cf5e49c49c1a889e11a264ae964a814aa9746a5))
+* **config:** stop multi-line comment leaking on config page ([7c89522](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/7c8952218df7a1814e2ac8c8f6cb20b42d725f83))
+* promote config-comment fix to jazzy ([7bc3c2b](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/7bc3c2b95180519683a349c4b7ebdddde8414112))
+* **ui:** center robot state badge in the navbar ([562e794](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/562e7940d0d6e06836f4cfa973b53ef02effc1ad))
+* **ui:** center robot state badge in the navbar ([1427f41](https://github.com/cme-research/cmeresearch_amr_webcontrol/commit/1427f41e287b078323963c6ab488936af10d701a))
+
 ## [0.6.0](https://github.com/cme-research/cmeresearch_amr_webcontrol/compare/jazzy-v0.5.3...jazzy-v0.6.0) (2026-07-21)
 
 
